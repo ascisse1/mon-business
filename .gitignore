@@ -1,0 +1,9 @@
+# Données privées du business — NE JAMAIS publier en ligne
+data.json
+backups/
+*.log
+
+# Divers
+node_modules/
+.DS_Store
+Thumbs.db

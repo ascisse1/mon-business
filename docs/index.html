@@ -399,8 +399,8 @@
       <section class="view" id="v-daily">
         <div class="card">
           <h3>📋 Saisie de la journée</h3>
-          <div class="field" style="margin-bottom:6px"><label>Date de la journée</label><input type="date" id="dl-date"></div>
-          <div class="muted" style="font-size:12.5px">En fin de journée : indiquez le nombre de chaque prestation réalisée, puis Enregistrer. Utilisez soit ce formulaire, soit la saisie rapide — pas les deux le même jour (doublons).</div>
+          <div class="field" style="margin-bottom:6px"><label>📅 Date de la journée — choisissez un jour passé pour l'afficher ou le corriger</label><input type="date" id="dl-date" onchange="renderDaily()"></div>
+          <div class="muted" style="font-size:12.5px">Choisissez une date : le formulaire affiche ce qui est <b>déjà enregistré</b> ce jour-là. Modifiez les nombres puis Enregistrer — cela met à jour la journée, sans doublon.</div>
         </div>
         <div id="dl-groups"></div>
         <div class="today-bar">
@@ -415,6 +415,7 @@
           <button class="btn gold" onclick="go('receipt')">🧾 Nouveau lavage (reçu)</button>
           <button class="btn sec" onclick="go('daily')">📋 Saisie de la journée</button>
         </div>
+        <div id="w-monthnav" class="mt"></div>
         <div class="grid2 mt">
           <div class="stat"><div class="lbl">Revenu du mois</div><div class="val" id="w-ca">0 <small>FCFA</small></div></div>
           <div class="stat"><div class="lbl">Nombre de lavages</div><div class="val" id="w-nb">0</div></div>
@@ -436,7 +437,7 @@
         </div>
         <div class="dash-2 mt">
           <div class="card" style="margin:0"><h3>📅 Menu de la semaine</h3><div id="c-menu"></div></div>
-          <div class="card" style="margin:0"><h3>Résumé du mois</h3>
+          <div class="card" style="margin:0"><h3>Résumé du mois</h3><div id="c-monthnav"></div>
             <div class="grid2">
               <div class="stat"><div class="lbl">Revenu café/resto</div><div class="val" id="c-ca" style="font-size:19px">0 <small>FCFA</small></div></div>
               <div class="stat"><div class="lbl">Marge estimée</div><div class="val up" id="c-marge" style="font-size:19px">0 <small>FCFA</small></div></div>
@@ -462,11 +463,13 @@
 
       <!-- ================= DÉPENSES ================= -->
       <section class="view" id="v-dep">
+        <div id="e-monthnav"></div>
         <div class="grid2">
           <div class="stat"><div class="lbl">Dépenses du mois</div><div class="val down" id="e-month">0 <small>FCFA</small></div></div>
           <div class="stat"><div class="lbl">Bénéfice net du mois</div><div class="val" id="e-net">0 <small>FCFA</small></div></div>
         </div>
         <button class="btn mt" onclick="openDepModal()">➕ Ajouter une dépense</button>
+        <button class="btn sec mt" onclick="openRationModal()">🍚 Ration quotidienne du personnel (2000 F/jour)</button>
         <div class="card mt"><h3>Dépenses récentes</h3><div id="e-list"></div></div>
       </section>
 
@@ -634,7 +637,8 @@ function load(){
   if(!DB.prepHistory)DB.prepHistory=[];
   if(!DB.settings.serverUrl&&location.protocol.startsWith('http')&&/^(localhost|127\.|192\.168\.|10\.|172\.)/.test(location.hostname))DB.settings.serverUrl=location.origin;
 }
-function save(){localStorage.setItem(KEY,JSON.stringify(DB));if(DB.settings.autoSync)debouncedSync();}
+function save(){localStorage.setItem(KEY,JSON.stringify(DB));if(DB.settings.autoSync)debouncedSync();
+  if(currentUser){try{render();}catch(e){}}}
 
 function dayKey(d){d=new Date(d);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function todayKey(){return dayKey(new Date());}
@@ -721,7 +725,7 @@ let cur='home';
 function go(v){
   if(!currentUser){showLogin();return;}
   if(!can(v))v=HOME_VIEW[currentUser.role]||'home';
-  cur=v;
+  cur=v;statsMonth=0;
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
   document.getElementById('v-'+v).classList.add('active');
   document.querySelectorAll('[data-v]').forEach(b=>b.classList.toggle('on',b.dataset.v===v));
@@ -867,12 +871,13 @@ function shareReceipt(){const txt=window._lastReceiptText||'';if(navigator.share
 /* ============================================================ SAISIE DE LA JOURNÉE (formulaire fin de journée) ============================================================ */
 function renderDaily(){
   const dt=document.getElementById('dl-date');if(!dt.value)dt.value=todayKey();
+  const existing={};ventesDay(dt.value).forEach(v=>{existing[v.itemId]=(existing[v.itemId]||0)+v.qty;});
   const box=document.getElementById('dl-groups');box.innerHTML='';
   Object.keys(CAT).forEach(c=>{const items=DB.services.filter(s=>s.cat===c);if(!items.length)return;
     const rows=items.map(s=>`<div class="row"><div class="l"><span class="dot" style="background:${CAT[c].color}"></span>
       <div><div class="nm">${s.nom}</div><div class="mt">${money(s.prix)}</div></div></div>
       <div class="r"><div class="stepper"><button onclick="dlStep('${s.id}',-1)">−</button>
-      <input class="dl-q" data-id="${s.id}" data-pu="${s.prix}" type="number" inputmode="numeric" min="0" value="0"
+      <input class="dl-q" data-id="${s.id}" data-pu="${s.prix}" type="number" inputmode="numeric" min="0" value="${existing[s.id]||0}"
         style="width:50px;padding:6px;border:1.5px solid var(--hair);border-radius:8px;text-align:center" oninput="dlTotal()">
       <button onclick="dlStep('${s.id}',1)">＋</button></div></div></div>`).join('');
     box.insertAdjacentHTML('beforeend',`<div class="card"><h3 style="color:${CAT[c].color}">${CAT[c].ico} ${CAT[c].nom}</h3>${rows}</div>`);});
@@ -882,15 +887,27 @@ function dlStep(id,d){const el=document.querySelector('.dl-q[data-id="'+id+'"]')
 function dlTotal(){let t=0;document.querySelectorAll('.dl-q').forEach(el=>{t+=(+el.value||0)*(+el.dataset.pu||0);});document.getElementById('dl-total').textContent=money(t);}
 function saveDaily(){
   const date=document.getElementById('dl-date').value;if(!date){toast('Choisissez une date');return;}
-  const ts=new Date(date+'T12:00:00').toISOString();let n=0;
+  const ts=new Date(date+'T12:00:00').toISOString();
+  DB.ventes=DB.ventes.filter(v=>dayKey(v.ts)!==date);
+  let n=0;
   document.querySelectorAll('.dl-q').forEach(el=>{const q=+el.value||0;if(q>0){const s=DB.services.find(x=>x.id===el.dataset.id);if(!s)return;
     DB.ventes.push({id:uid(),ts,cat:s.cat,itemId:s.id,nom:s.nom,qty:q,pu:s.prix,cout:s.cout||0});n+=q;}});
-  if(!n){toast('Rien à enregistrer');return;}
-  save();toast('✓ Journée enregistrée ('+n+' prestations)');go('home');
+  save();toast('✓ '+new Date(ts).toLocaleDateString('fr-FR')+' enregistrée ('+n+' prestation'+(n>1?'s':'')+')');renderDaily();
 }
 
 /* ============================================================ CAFÉ ============================================================ */
 let cafeCat='cafe';
+/* --- Navigation par mois (Lavage / Café / Dépenses) --- */
+let statsMonth=0;
+function vmDate(){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()+statsMonth);return d;}
+function vmKey(){return monthKey(vmDate());}
+function vmLabel(){return vmDate().toLocaleDateString('fr-FR',{month:'long',year:'numeric'});}
+function monthShift(delta){const n=statsMonth+delta;if(n>0)return;statsMonth=n;render();}
+function monthNavHTML(){return `<div class="seg" style="margin-bottom:12px">
+  <button onclick="monthShift(-1)">‹ Précédent</button>
+  <button class="on" style="flex:1.7;text-transform:capitalize;pointer-events:none">${vmLabel()}</button>
+  <button onclick="monthShift(1)"${statsMonth>=0?' style="opacity:.35"':''}>Suivant ›</button></div>`;}
+
 function renderCafe(){
   const tabs=document.getElementById('c-tabs');tabs.innerHTML='';
   ['cafe','jus','plat'].forEach(c=>{const b=document.createElement('button');b.className='cat-tab'+(c===cafeCat?' on':'');
@@ -904,7 +921,8 @@ function renderCafe(){
   const plats=DB.services.filter(s=>s.cat==='plat'&&s.jour),today=new Date().getDay();
   document.getElementById('c-menu').innerHTML=[1,2,3,4,5].map(j=>{const p=plats.find(x=>x.jour===j);
     return `<div class="row"><div class="l"><span class="tag">${JOURS[j].slice(0,3)}</span><span class="nm">${p?p.nom:'—'} ${j===today?'<span class="pill">Aujourd\'hui</span>':''}</span></div><div class="r">${p?money(p.prix):''}</div></div>`;}).join('');
-  const mv=ventesMonth(monthKey(new Date())).filter(v=>['cafe','jus','plat'].includes(v.cat));
+  document.getElementById('c-monthnav').innerHTML=monthNavHTML();
+  const mv=ventesMonth(vmKey()).filter(v=>['cafe','jus','plat'].includes(v.cat));
   document.getElementById('c-ca').innerHTML=FR(sum(mv,caOf))+' <small>FCFA</small>';
   document.getElementById('c-marge').innerHTML=FR(sum(mv,benefOf))+' <small>FCFA</small>';
 }
@@ -915,7 +933,8 @@ function undoLast(){const t=ventesDay(todayKey()).filter(v=>v.cat!=='lavage');if
 
 /* ============================================================ LAVAGE ============================================================ */
 function renderWash(){
-  const mv=ventesMonth(monthKey(new Date())).filter(v=>v.cat==='lavage');
+  document.getElementById('w-monthnav').innerHTML=monthNavHTML();
+  const mv=ventesMonth(vmKey()).filter(v=>v.cat==='lavage');
   document.getElementById('w-ca').innerHTML=FR(sum(mv,caOf))+' <small>FCFA</small>';
   document.getElementById('w-nb').textContent=sum(mv,v=>v.qty);
   const agg={};mv.forEach(v=>{agg[v.nom]=agg[v.nom]||{nom:v.nom,qty:0,ca:0,free:0};agg[v.nom].qty+=v.qty;agg[v.nom].ca+=caOf(v);if(v.free)agg[v.nom].free+=v.qty;});
@@ -945,28 +964,52 @@ function renderClients(){
 function delCustomer(id){if(confirm('Supprimer ce client ?')){DB.customers=DB.customers.filter(c=>c.id!==id);save();renderClients();}}
 
 /* ============================================================ DÉPENSES ============================================================ */
-const DEP_CATS=['Loyer lavage','Loyer café','Salaires','Produits nettoyage','Achat nourriture','Autres'];
+const DEP_CATS=['Ration personnel','Loyer lavage','Loyer café','Salaires','Produits nettoyage','Achat nourriture','Autres'];
 function renderDep(){
-  const mk=monthKey(new Date()),md=DB.depenses.filter(d=>monthKey(d.ts)===mk),totDep=sum(md,d=>d.montant);
+  document.getElementById('e-monthnav').innerHTML=monthNavHTML();
+  const mk=vmKey(),md=DB.depenses.filter(d=>monthKey(d.ts)===mk),totDep=sum(md,d=>d.montant);
   const net=sum(ventesMonth(mk),benefOf)-totDep;
   document.getElementById('e-month').innerHTML=FR(totDep)+' <small>FCFA</small>';
   const ne=document.getElementById('e-net');ne.innerHTML=FR(net)+' <small>FCFA</small>';ne.className='val '+(net>=0?'up':'down');
-  const rows=DB.depenses.slice().sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,50);
+  const rows=md.slice().sort((a,b)=>new Date(b.ts)-new Date(a.ts));
   document.getElementById('e-list').innerHTML=rows.length?rows.map(d=>
     `<div class="row"><div class="l"><span class="dot" style="background:var(--dep)"></span>
      <div><div class="nm">${d.categorie}</div><div class="mt">${new Date(d.ts).toLocaleDateString('fr-FR')}${d.note?' · '+d.note:''}</div></div></div>
-     <div class="r down">-${money(d.montant)} <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense enregistrée</div>';
+     <div class="r down">-${money(d.montant)} <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense ce mois</div>';
 }
 function openDepModal(){openSheet(`<h3>➕ Nouvelle dépense</h3>
   <div class="field"><label>Catégorie</label><select id="m-cat">${DEP_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
   <div class="field"><label>Montant (FCFA)</label><input type="number" id="m-mnt" inputmode="numeric" placeholder="0"></div>
   <div class="field"><label>Note (optionnel)</label><input type="text" id="m-note" placeholder="ex: sac de riz"></div>
-  <div class="field"><label>Date</label><input type="date" id="m-date" value="${todayKey()}"></div>
+  <div class="field"><label>📅 Date de la dépense — choisissez une date passée si besoin</label>
+    <input type="date" id="m-date" value="${todayKey()}" max="${todayKey()}" style="font-size:16px">
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn sm sec" type="button" onclick="setDepDate(0)">Aujourd'hui</button>
+      <button class="btn sm sec" type="button" onclick="setDepDate(1)">Hier</button>
+      <button class="btn sm sec" type="button" onclick="setDepDate(2)">Avant-hier</button>
+    </div></div>
   <button class="btn" onclick="saveDep()">Enregistrer</button>`);}
+function setDepDate(daysAgo){const d=new Date();d.setDate(d.getDate()-daysAgo);document.getElementById('m-date').value=dayKey(d);}
 function saveDep(){const m=+document.getElementById('m-mnt').value;if(!m){toast('Entrez un montant');return;}
-  DB.depenses.push({id:uid(),ts:new Date(document.getElementById('m-date').value).toISOString(),categorie:document.getElementById('m-cat').value,montant:m,note:document.getElementById('m-note').value.trim()});
+  const dstr=document.getElementById('m-date').value||todayKey();
+  DB.depenses.push({id:uid(),ts:new Date(dstr+'T12:00:00').toISOString(),categorie:document.getElementById('m-cat').value,montant:m,note:document.getElementById('m-note').value.trim()});
   save();closeSheet();toast('✓ Dépense ajoutée');renderDep();}
 function delDep(id){DB.depenses=DB.depenses.filter(d=>d.id!==id);save();renderDep();}
+function openRationModal(){openSheet(`<h3>🍚 Ration quotidienne du personnel</h3>
+  <div class="muted" style="font-size:12.5px;margin-bottom:10px">Ajoute une dépense pour <b>chaque jour</b> de la période. Les jours déjà enregistrés ne sont pas dupliqués (vous pouvez relancer sans risque).</div>
+  <div class="inline"><div class="field"><label>Du</label><input type="date" id="rn-from" value="2026-03-23"></div>
+  <div class="field"><label>Au</label><input type="date" id="rn-to" value="2026-07-11"></div></div>
+  <div class="field"><label>Montant par jour (FCFA)</label><input type="number" id="rn-amt" value="2000" inputmode="numeric"></div>
+  <button class="btn" onclick="genRation()">Générer les dépenses</button>`);}
+function genRation(){
+  const from=document.getElementById('rn-from').value,to=document.getElementById('rn-to').value,amt=+document.getElementById('rn-amt').value||0;
+  if(!from||!to||!amt){toast('Renseignez les dates et le montant');return;}
+  const CATR='Ration personnel';
+  const seen=new Set(DB.depenses.filter(d=>d.categorie===CATR).map(d=>dayKey(d.ts)));
+  let d=new Date(from+'T12:00:00'),end=new Date(to+'T12:00:00'),n=0,g=0;
+  while(d<=end&&g<600){const k=dayKey(d);if(!seen.has(k)){DB.depenses.push({id:uid(),ts:new Date(k+'T12:00:00').toISOString(),categorie:CATR,montant:amt,note:'Ration quotidienne personnel'});n++;}d.setDate(d.getDate()+1);g++;}
+  save();closeSheet();toast('✓ '+n+' jour(s) de ration ajouté(s)');renderDep();
+}
 
 /* ============================================================ ANALYSE ============================================================ */
 function renderAna(){

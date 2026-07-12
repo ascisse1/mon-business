@@ -303,7 +303,10 @@
       <button data-v="cafe"><span class="i">☕</span>Café & Resto</button>
       <button data-v="clients"><span class="i">🎫</span>Clients fidèles</button>
       <button data-v="recipes"><span class="i">🍲</span>Rentabilité</button>
+      <button data-v="caisse"><span class="i">💵</span>Caisse du jour</button>
       <button data-v="dep"><span class="i">💸</span>Dépenses</button>
+      <button data-v="pnl"><span class="i">🧮</span>Compte de résultat</button>
+      <button data-v="stock"><span class="i">📦</span>Stock</button>
       <button data-v="ana"><span class="i">📈</span>Analyse</button>
       <div class="side-sep"></div>
       <button data-v="set"><span class="i">⚙️</span>Réglages</button>
@@ -473,17 +476,58 @@
         <div class="card mt"><h3>Dépenses récentes</h3><div id="e-list"></div></div>
       </section>
 
+      <!-- ================= CAISSE DU JOUR ================= -->
+      <section class="view" id="v-caisse">
+        <div class="card">
+          <h3>💵 Caisse du jour — contrôle</h3>
+          <div class="field" style="margin-bottom:6px"><label>📅 Date</label><input type="date" id="ck-date" onchange="renderCaisse()"></div>
+          <div class="muted" style="font-size:12.5px">Recettes du jour − dépenses du jour = <b>ce qui doit être dans la caisse ce soir</b>. Comptez l'argent réel : l'app calcule l'écart.</div>
+        </div>
+        <div id="ck-body"></div>
+      </section>
+
+      <!-- ================= COMPTE DE RÉSULTAT ================= -->
+      <section class="view" id="v-pnl">
+        <div id="pnl-monthnav"></div>
+        <div id="pnl-body"></div>
+      </section>
+
+      <!-- ================= STOCK ================= -->
+      <section class="view" id="v-stock">
+        <button class="btn" onclick="openStockModal()">➕ Ajouter un article</button>
+        <div id="st-body" class="mt"></div>
+      </section>
+
       <!-- ================= ANALYSE ================= -->
       <section class="view" id="v-ana">
+        <div class="card">
+          <h3>📅 Période d'analyse</h3>
+          <div class="seg" style="margin-bottom:10px">
+            <button onclick="setAnaPreset('7')">7 jours</button>
+            <button onclick="setAnaPreset('30')">30 jours</button>
+            <button onclick="setAnaPreset('mois')">Ce mois</button>
+            <button onclick="setAnaPreset('tout')">Tout</button>
+          </div>
+          <div class="inline">
+            <div class="field" style="margin:0"><label>Du</label><input type="date" id="a-from" onchange="anaSetDate('from',this.value)"></div>
+            <div class="field" style="margin:0"><label>Au</label><input type="date" id="a-to" onchange="anaSetDate('to',this.value)"></div>
+          </div>
+          <div class="muted" id="a-range" style="font-size:12.5px;margin-top:8px"></div>
+        </div>
+        <div class="dash-stats" id="a-kpi"></div>
         <div class="card"><h3>🧠 Recommandations intelligentes</h3><div id="a-reco"></div></div>
         <div class="grid2">
           <div class="stat"><div class="lbl">Activité la + rentable</div><div class="val" id="a-act" style="font-size:18px">—</div></div>
           <div class="stat"><div class="lbl">Produit le + rentable</div><div class="val" id="a-prod" style="font-size:18px">—</div></div>
         </div>
         <div class="dash-2 mt">
-          <div class="card" style="margin:0"><h3>Performance par jour (moyenne)</h3><canvas id="a-chart" height="180"></canvas>
+          <div class="card" style="margin:0"><h3>Performance par jour de la semaine</h3><canvas id="a-chart" height="180"></canvas>
             <div class="muted center" id="a-weakday" style="font-size:13px;margin-top:8px"></div></div>
-          <div class="card" style="margin:0"><h3>Rentabilité par activité (30 j)</h3><div id="a-mix"></div></div>
+          <div class="card" style="margin:0"><h3>Rentabilité par activité</h3><div id="a-mix"></div></div>
+        </div>
+        <div class="dash-2 mt">
+          <div class="card" style="margin:0"><h3>🏆 Top prestations</h3><div id="a-top"></div></div>
+          <div class="card" style="margin:0"><h3>👷 Performance par employé</h3><div id="a-team"></div></div>
         </div>
       </section>
 
@@ -585,7 +629,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const CAT={lavage:{nom:'Lavage',color:'var(--wash)',ico:'🚗'},cafe:{nom:'Café',color:'var(--cafe)',ico:'☕'},
   jus:{nom:'Jus',color:'var(--jus)',ico:'🧃'},plat:{nom:'Plats',color:'var(--plat)',ico:'🍛'}};
 const JOURS=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const TITRES={home:'Tableau de bord',receipt:'Nouveau reçu / arrivée',daily:'Saisie de la journée',wash:'Lavage auto',cafe:'Café & Restauration',clients:'Clients fidèles',recipes:'Rentabilité par portion',dep:'Dépenses',ana:'Analyse',set:'Réglages',users:'Utilisateurs'};
+const TITRES={home:'Tableau de bord',receipt:'Nouveau reçu / arrivée',daily:'Saisie de la journée',wash:'Lavage auto',cafe:'Café & Restauration',clients:'Clients fidèles',recipes:'Rentabilité par portion',caisse:'Caisse du jour',dep:'Dépenses',pnl:'Compte de résultat',stock:'Stock',ana:'Analyse',set:'Réglages',users:'Utilisateurs'};
 
 function defaults(){return{
   settings:{objectifJour:30000,loyaltyN:5,business:'Mon Business',serverUrl:'',autoSync:false,receiptSeq:1},
@@ -606,12 +650,18 @@ function defaults(){return{
     {id:uid(),cat:'plat',nom:'Widjila',prix:1500,cout:700,jour:3},{id:uid(),cat:'plat',nom:'Riz au gras',prix:1500,cout:700,jour:4},
     {id:uid(),cat:'plat',nom:'Fakoye',prix:1500,cout:700,jour:5},{id:uid(),cat:'plat',nom:'Plat Menu',prix:2000,cout:1000},
     {id:uid(),cat:'plat',nom:'Supplément',prix:300,cout:100},{id:uid(),cat:'plat',nom:'Plat sur place',prix:500,cout:200}],
-  ventes:[],depenses:[],customers:[],recipes:seedRecipes(),prepHistory:[],
+  ventes:[],depenses:[],customers:[],caisse:[],stock:seedStock(),recipes:seedRecipes(),prepHistory:[],
   users:[
     {id:'u-admin',name:'Administrateur',role:'admin',pin:hashPin('1234')},
     {id:'u-gest',name:'Gestionnaire',role:'gestionnaire',pin:hashPin('1111')},
     {id:'u-agent',name:'Agent',role:'agent',pin:hashPin('0000')}
   ]};}
+function seedStock(){
+  const it=(nom,unite,qty,seuil)=>({id:uid(),nom,unite,qty,seuil});
+  return [it('OMO (lessive)','carton',1,1),it('Savon liquide','litre',5,2),it('Eau de javel','litre',2,1),
+    it('Café capsules','boîte',2,1),it('Café moulu','kg',1,1),it('Sucre','kg',5,2),it('Gaz','bouteille',1,1),
+    it('Charbon','sac',2,1),it('Riz','kg',10,5),it('Huile','litre',3,1)];
+}
 function seedRecipes(){
   const ig=(nom,q,u,px,util)=>({id:uid(),nom,qtyAchat:q,unite:u,prixAchat:px,qtyUtilisee:util==null?q:util,fournisseur:'',obs:''});
   const base=(jour,nom,ings,charbon)=>{const vi=ings.find(i=>/viande/i.test(i.nom));
@@ -635,6 +685,8 @@ function load(){
   if(!DB.users||!DB.users.length)DB.users=defaults().users;
   if(!DB.recipes||!DB.recipes.length)DB.recipes=seedRecipes();
   if(!DB.prepHistory)DB.prepHistory=[];
+  if(!DB.caisse)DB.caisse=[];
+  if(!DB.stock||!DB.stock.length)DB.stock=seedStock();
   if(!DB.settings.serverUrl&&location.protocol.startsWith('http')&&/^(localhost|127\.|192\.168\.|10\.|172\.)/.test(location.hostname))DB.settings.serverUrl=location.origin;
 }
 function save(){localStorage.setItem(KEY,JSON.stringify(DB));if(DB.settings.autoSync)debouncedSync();
@@ -653,13 +705,14 @@ const caOf=v=>v.qty*v.pu, benefOf=v=>v.qty*(v.pu-(v.cout||0)), sum=(a,f)=>a.redu
 /* ---- Rôles & permissions ---- */
 const ROLE_LABEL={admin:'Administrateur',gestionnaire:'Gestionnaire',agent:'Agent',demo:'Visiteur (démo)'};
 const PERMS={
-  admin:['home','receipt','daily','wash','cafe','clients','recipes','dep','ana','set','users'],
-  gestionnaire:['home','cafe','receipt','clients','recipes'],
+  admin:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana','set','users'],
+  gestionnaire:['home','cafe','receipt','clients','recipes','caisse','pnl','stock'],
   agent:['daily'],
-  demo:['home','receipt','daily','wash','cafe','clients','recipes','dep','ana']
+  demo:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana']
 };
 const HOME_VIEW={admin:'home',gestionnaire:'home',agent:'daily',demo:'home'};
 const NAVMETA={home:{i:'🏠',l:'Accueil'},daily:{i:'📋',l:'Saisie'},receipt:{i:'🧾',l:'Reçu'},wash:{i:'🚗',l:'Lavage'},
+  caisse:{i:'💵',l:'Caisse'},pnl:{i:'🧮',l:'Résultat'},stock:{i:'📦',l:'Stock'},
   cafe:{i:'☕',l:'Café'},clients:{i:'🎫',l:'Clients'},recipes:{i:'🍲',l:'Rentab.'},dep:{i:'💸',l:'Dépenses'},ana:{i:'📈',l:'Analyse'},set:{i:'⚙️',l:'Réglages'},users:{i:'👤',l:'Compte'}};
 const TABBAR_ORDER={admin:['home','recipes','receipt','cafe','ana'],gestionnaire:['home','cafe','receipt','recipes'],agent:['daily'],demo:['home','recipes','receipt','cafe','ana']};
 let currentUser=null;
@@ -737,7 +790,7 @@ document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>go(b.dataset.v));
 function render(){
   document.getElementById('pageDate').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   document.querySelectorAll('.js-brand').forEach(e=>e.textContent=DB.settings.business||'Mon Business');
-  ({home:renderHome,receipt:renderReceipt,daily:renderDaily,wash:renderWash,cafe:renderCafe,clients:renderClients,recipes:renderRecipes,dep:renderDep,ana:renderAna,set:renderSet,users:renderUsers}[cur]||(()=>{}))();
+  ({home:renderHome,receipt:renderReceipt,daily:renderDaily,wash:renderWash,cafe:renderCafe,clients:renderClients,recipes:renderRecipes,caisse:renderCaisse,dep:renderDep,pnl:renderPnl,stock:renderStock,ana:renderAna,set:renderSet,users:renderUsers}[cur]||(()=>{}))();
 }
 
 /* ============================================================ DASHBOARD ============================================================ */
@@ -830,9 +883,9 @@ function validateReceipt(){
     if(l.cat==='lavage'){for(let i=0;i<l.qty;i++){let free=false;
       if(cust&&(cust.stamps||0)>=N){free=true;cust.stamps=0;cust.freeUsed=(cust.freeUsed||0)+1;}else if(cust){cust.stamps=(cust.stamps||0)+1;}
       if(cust)cust.totalWashes=(cust.totalWashes||0)+1;
-      DB.ventes.push({id:uid(),ts,cat:l.cat,itemId:l.id,nom:l.nom,qty:1,pu:free?0:l.prix,cout:l.cout,customerId:cust?cust.id:null,free,receiptNo});
+      DB.ventes.push({id:uid(),ts,cat:l.cat,itemId:l.id,nom:l.nom,qty:1,pu:free?0:l.prix,cout:l.cout,customerId:cust?cust.id:null,free,receiptNo,par:currentUser?currentUser.name:''});
       lines.push({nom:l.nom,prix:free?0:l.prix,free});}}
-    else{DB.ventes.push({id:uid(),ts,cat:l.cat,itemId:l.id,nom:l.nom,qty:l.qty,pu:l.prix,cout:l.cout,receiptNo});
+    else{DB.ventes.push({id:uid(),ts,cat:l.cat,itemId:l.id,nom:l.nom,qty:l.qty,pu:l.prix,cout:l.cout,receiptNo,par:currentUser?currentUser.name:''});
       lines.push({nom:l.nom+(l.qty>1?' ×'+l.qty:''),prix:l.prix*l.qty,free:false});}
   });
   if(cust)cust.lastVisit=ts;
@@ -891,7 +944,7 @@ function saveDaily(){
   DB.ventes=DB.ventes.filter(v=>dayKey(v.ts)!==date);
   let n=0;
   document.querySelectorAll('.dl-q').forEach(el=>{const q=+el.value||0;if(q>0){const s=DB.services.find(x=>x.id===el.dataset.id);if(!s)return;
-    DB.ventes.push({id:uid(),ts,cat:s.cat,itemId:s.id,nom:s.nom,qty:q,pu:s.prix,cout:s.cout||0});n+=q;}});
+    DB.ventes.push({id:uid(),ts,cat:s.cat,itemId:s.id,nom:s.nom,qty:q,pu:s.prix,cout:s.cout||0,par:currentUser?currentUser.name:''});n+=q;}});
   save();toast('✓ '+new Date(ts).toLocaleDateString('fr-FR')+' enregistrée ('+n+' prestation'+(n>1?'s':'')+')');renderDaily();
 }
 
@@ -926,7 +979,7 @@ function renderCafe(){
   document.getElementById('c-ca').innerHTML=FR(sum(mv,caOf))+' <small>FCFA</small>';
   document.getElementById('c-marge').innerHTML=FR(sum(mv,benefOf))+' <small>FCFA</small>';
 }
-function addVente(s){DB.ventes.push({id:uid(),ts:new Date().toISOString(),cat:s.cat,itemId:s.id,nom:s.nom,qty:1,pu:s.prix,cout:s.cout||0});
+function addVente(s){DB.ventes.push({id:uid(),ts:new Date().toISOString(),cat:s.cat,itemId:s.id,nom:s.nom,qty:1,pu:s.prix,cout:s.cout||0,par:currentUser?currentUser.name:''});
   save();toast('✓ '+s.nom+' — '+money(s.prix));if(navigator.vibrate)navigator.vibrate(15);renderCafe();}
 function undoLast(){const t=ventesDay(todayKey()).filter(v=>v.cat!=='lavage');if(!t.length){toast('Rien à annuler');return;}
   const last=t.reduce((a,b)=>new Date(a.ts)>new Date(b.ts)?a:b);DB.ventes=DB.ventes.filter(v=>v.id!==last.id);save();toast('↩︎ Annulé : '+last.nom);renderCafe();}
@@ -953,15 +1006,173 @@ function renderClients(){
   document.getElementById('cl-soon').innerHTML=soon.length?soon.slice(0,12).map(c=>{const s=c.stamps||0,free=s>=N;
     return `<div class="row"><div class="l"><span style="font-size:18px">${free?'🎁':'⭐'}</span>
       <div><div class="nm">${c.name||'Client'} · ${c.phone}</div><div class="mt" style="color:var(--gold)">${'★'.repeat(s)+'☆'.repeat(Math.max(N-s,0))}</div></div></div>
-      <div class="r">${free?'<span class="pill gold">Gratuit dû</span>':`<span class="muted">${N-s} avant gratuit</span>`}</div></div>`;}).join(''):'<div class="empty">Aucun client proche d\'un lavage gratuit.</div>';
+      <div class="r" style="display:flex;gap:6px;align-items:center">${free?'<span class="pill gold">Gratuit dû</span>':`<span class="muted">${N-s} avant gratuit</span>`}
+      <button class="btn sm sec" style="padding:5px 8px" onclick="waRelance('${c.id}')" title="Relancer par WhatsApp">📲</button></div></div>`;}).join(''):'<div class="empty">Aucun client proche d\'un lavage gratuit.</div>';
   const q=(document.getElementById('cl-search').value||'').toLowerCase().replace(/\s/g,'');
   const list=DB.customers.filter(c=>!q||c.phone.replace(/\s/g,'').includes(q)||(c.name||'').toLowerCase().includes(q)).sort((a,b)=>new Date(b.lastVisit||0)-new Date(a.lastVisit||0));
   document.getElementById('cl-list').innerHTML=list.length?list.map(c=>
     `<div class="row"><div class="l"><span class="dot" style="background:var(--wash)"></span>
       <div><div class="nm">${c.name||'Client'} · ${c.phone}</div><div class="mt">${c.totalWashes||0} lavages · ${c.freeUsed||0} offerts${c.lastVisit?' · '+new Date(c.lastVisit).toLocaleDateString('fr-FR'):''}</div></div></div>
-      <div class="r"><span class="pill">${(c.stamps||0)}/${N}</span> <button class="del" onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucun client. Ajoutez un téléphone lors d\'un reçu.</div>';
+      <div class="r" style="display:flex;gap:6px;align-items:center"><span class="pill">${(c.stamps||0)}/${N}</span>
+      <button class="btn sm sec" style="padding:5px 8px" onclick="waRelance('${c.id}')" title="Relancer par WhatsApp">📲</button>
+      <button class="del" onclick="delCustomer('${c.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucun client. Ajoutez un téléphone lors d\'un reçu.</div>';
+}
+function waRelance(id){
+  const c=(DB.customers||[]).find(x=>x.id===id);if(!c)return;
+  const N=loyaltyN(),s=c.stamps||0,biz=DB.settings.business||'Mon Business';
+  const nom=c.name?' '+c.name:'';
+  const msg=(s>=N)
+    ? `Bonjour${nom} 👋 Bonne nouvelle : chez ${biz}, votre prochain lavage est OFFERT 🎁 (fidélité). Passez quand vous voulez ! 🚗✨`
+    : `Bonjour${nom} 👋 Chez ${biz}, il ne vous reste que ${N-s} lavage(s) avant votre lavage GRATUIT 🎁. À très bientôt ! 🚗`;
+  let p=(c.phone||'').replace(/\D/g,'');
+  if(!p){toast('Ce client n\'a pas de numéro');return;}
+  if(!p.startsWith('223'))p='223'+p;   // indicatif Mali
+  window.open('https://wa.me/'+p+'?text='+encodeURIComponent(msg),'_blank');
 }
 function delCustomer(id){if(confirm('Supprimer ce client ?')){DB.customers=DB.customers.filter(c=>c.id!==id);save();renderClients();}}
+
+/* ============================================================ CAISSE DU JOUR ============================================================ */
+function renderCaisse(){
+  const dt=document.getElementById('ck-date');if(!dt.value)dt.value=todayKey();
+  const k=dt.value;
+  const recettes=sum(ventesDay(k),caOf);
+  const depTot=sum((DB.depenses||[]).filter(d=>dayKey(d.ts)===k),d=>d.montant);
+  const theo=recettes-depTot;
+  const rec=(DB.caisse||[]).find(c=>c.date===k);
+  const reel=rec?rec.reel:null;
+  const ecart=(reel!=null)?reel-theo:null;
+  document.getElementById('ck-body').innerHTML=`
+  <div class="dash-stats">
+    <div class="stat hero"><div class="lbl">Recettes du jour</div><div class="val">${FR(recettes)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Dépenses du jour</div><div class="val down">${FR(depTot)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Caisse attendue</div><div class="val">${FR(theo)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Écart</div><div class="val ${ecart==null?'':(ecart<0?'down':'up')}">${ecart==null?'—':(ecart>0?'+':'')+FR(ecart)+' <small>FCFA</small>'}</div></div>
+  </div>
+  <div class="card"><h3>Comptage du soir</h3>
+    <div class="field"><label>Montant réellement compté dans la caisse (FCFA)</label>
+      <input type="number" id="ck-reel" inputmode="numeric" value="${reel!=null?reel:''}" placeholder="attendu : ${FR(theo)}"></div>
+    <div class="field"><label>Note (optionnel)</label><input type="text" id="ck-note" value="${rec&&rec.note?esc(rec.note):''}" placeholder="ex: avance donnée à Hama"></div>
+    <button class="btn" onclick="saveCaisse()">💾 Enregistrer le comptage</button>
+    ${ecart!=null?`<div class="reco ${ecart===0?'good':'warn'}" style="margin-top:12px"><div class="ic">${ecart===0?'✅':(ecart<0?'🔴':'🟡')}</div>
+      <div class="tx">${ecart===0?'Caisse juste — aucun écart.':(ecart<0?`<b>Il manque ${FR(-ecart)} FCFA.</b> Une dépense non saisie, une avance, ou de l'argent qui a disparu.`:`<b>Excédent de ${FR(ecart)} FCFA.</b> Une recette n'a probablement pas été saisie.`)}</div></div>`:''}
+  </div>
+  <div class="card"><h3>Historique des comptages</h3><div id="ck-list"></div></div>`;
+  const hist=(DB.caisse||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,40);
+  document.getElementById('ck-list').innerHTML=hist.length?hist.map(c=>{const e=+c.ecart||0;
+    return `<div class="row"><div class="l"><span style="font-size:16px">${e===0?'✅':(e<0?'🔴':'🟡')}</span>
+      <div><div class="nm">${new Date(c.date+'T12:00:00').toLocaleDateString('fr-FR')}</div>
+      <div class="mt">attendu ${money(c.theorique)} · compté ${money(c.reel)}${c.note?' · '+esc(c.note):''}${c.par?' · '+esc(c.par):''}</div></div></div>
+      <div class="r ${e<0?'down':(e>0?'':'up')}">${e>0?'+':''}${FR(e)} FCFA</div></div>`;}).join(''):'<div class="empty">Aucun comptage enregistré</div>';
+}
+function saveCaisse(){
+  const k=document.getElementById('ck-date').value||todayKey();
+  const el=document.getElementById('ck-reel');
+  if(el.value===''){toast('Entrez le montant compté');return;}
+  const reel=+el.value||0;
+  const recettes=sum(ventesDay(k),caOf);
+  const depTot=sum((DB.depenses||[]).filter(d=>dayKey(d.ts)===k),d=>d.montant);
+  const theo=recettes-depTot,ecart=reel-theo;
+  DB.caisse=(DB.caisse||[]).filter(c=>c.date!==k);
+  DB.caisse.push({id:uid(),date:k,recettes,depenses:depTot,theorique:theo,reel,ecart,
+    note:document.getElementById('ck-note').value.trim(),par:currentUser?currentUser.name:''});
+  save();
+  toast(ecart===0?'✅ Caisse juste':(ecart<0?'🔴 Manque '+money(-ecart):'🟡 Excédent '+money(ecart)));
+}
+
+/* ============================================================ COMPTE DE RÉSULTAT ============================================================ */
+function amortDuMois(mk){
+  let a=0;
+  (DB.depenses||[]).filter(d=>d.invest).forEach(d=>{
+    const n=Math.max(1,+d.amortMois||24);
+    const sk=monthKey(d.ts);
+    const p1=sk.split('-').map(Number),p2=mk.split('-').map(Number);
+    const diff=(p2[0]-p1[0])*12+(p2[1]-p1[1]);
+    if(diff>=0&&diff<n)a+=(+d.montant||0)/n;
+  });
+  return a;
+}
+function renderPnl(){
+  document.getElementById('pnl-monthnav').innerHTML=monthNavHTML();
+  const mk=vmKey(),mv=ventesMonth(mk);
+  const caLav=sum(mv.filter(v=>v.cat==='lavage'),caOf);
+  const caCafe=sum(mv.filter(v=>v.cat!=='lavage'),caOf);
+  const ca=caLav+caCafe;
+  const coutProd=sum(mv,v=>v.qty*(v.cout||0));
+  const margeBrute=ca-coutProd;
+  const md=(DB.depenses||[]).filter(d=>monthKey(d.ts)===mk);
+  const charges=md.filter(d=>!d.invest),invests=md.filter(d=>d.invest);
+  const chargesTot=sum(charges,d=>d.montant),investTot=sum(invests,d=>d.montant);
+  const amort=amortDuMois(mk);
+  const resultat=margeBrute-chargesTot-amort;
+  const byCat={};charges.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const catRows=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(e=>
+    `<div class="row"><div class="l"><span class="dot" style="background:var(--dep)"></span><span class="nm">${esc(e[0])}</span></div><div class="r down">-${money(e[1])}</div></div>`).join('')||'<div class="empty">Aucune charge ce mois</div>';
+  const L=(lbl,val,cls,bold)=>`<div class="row"><div class="l"><span class="nm">${bold?'<b>'+lbl+'</b>':lbl}</span></div>
+    <div class="r ${cls||''}">${bold?'<b>':''}${val<0?'-':''}${money(Math.abs(val))}${bold?'</b>':''}</div></div>`;
+  document.getElementById('pnl-body').innerHTML=`
+  <div class="dash-stats">
+    <div class="stat hero"><div class="lbl">Chiffre d'affaires</div><div class="val">${FR(ca)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Marge brute</div><div class="val up">${FR(margeBrute)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Charges d'exploitation</div><div class="val down">${FR(chargesTot)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Résultat net du mois</div><div class="val ${resultat>=0?'up':'down'}">${FR(resultat)} <small>FCFA</small></div></div>
+  </div>
+  <div class="dash-2">
+    <div class="card" style="margin:0"><h3>🧮 Compte de résultat — ${vmLabel()}</h3>
+      ${L("Ventes lavage",caLav,'up')}
+      ${L("Ventes café / restaurant",caCafe,'up')}
+      ${L("CHIFFRE D'AFFAIRES",ca,'up',true)}
+      ${L("Coût des produits vendus",-coutProd,'down')}
+      ${L("MARGE BRUTE",margeBrute,'up',true)}
+      ${L("Charges d'exploitation",-chargesTot,'down')}
+      ${L("Amortissement des investissements",-amort,'down')}
+      ${L("RÉSULTAT NET",resultat,resultat>=0?'up':'down',true)}
+    </div>
+    <div class="card" style="margin:0"><h3>Détail des charges</h3>${catRows}
+      <div class="row" style="border-top:2px solid var(--hair);margin-top:6px"><div class="l"><b>Total</b></div><div class="r down"><b>-${money(chargesTot)}</b></div></div></div>
+  </div>
+  <div class="card"><h3>🏗️ Investissements</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">Un investissement (frigo, panneaux, TV…) n'est <b>pas</b> une charge du mois : son coût est étalé sur plusieurs mois (amortissement). Marquez vos achats durables comme « investissement » depuis l'écran <b>Dépenses</b>.</div>
+    ${L("Investi ce mois (sortie de caisse réelle)",investTot,'')}
+    ${L("Amortissement imputé ce mois",amort,'')}
+    ${L("Total investi depuis le début",sum((DB.depenses||[]).filter(d=>d.invest),d=>d.montant),'',true)}
+  </div>`;
+}
+
+/* ============================================================ STOCK ============================================================ */
+function renderStock(){
+  const items=DB.stock||[];
+  const low=items.filter(s=>(+s.qty||0)<=(+s.seuil||0));
+  document.getElementById('st-body').innerHTML=`
+  ${low.length?`<div class="reco warn"><div class="ic">⚠️</div><div class="tx"><b>${low.length} article(s) à racheter</b> : ${low.map(s=>esc(s.nom)).join(', ')}.</div></div>`
+   :`<div class="reco good"><div class="ic">✅</div><div class="tx">Tous vos stocks sont au-dessus du seuil d'alerte.</div></div>`}
+  <div class="card"><h3>📦 Articles en stock</h3>
+  ${items.length?items.map(s=>{const al=(+s.qty||0)<=(+s.seuil||0);
+    return `<div class="row"><div class="l"><span style="font-size:16px">${al?'🔴':'🟢'}</span>
+      <div><div class="nm">${esc(s.nom)}</div><div class="mt">alerte si ≤ ${s.seuil} ${esc(s.unite)}</div></div></div>
+      <div class="r" style="display:flex;gap:6px;align-items:center">
+        <div class="stepper"><button onclick="stockAdj('${s.id}',-1)">−</button>
+        <input type="number" step="any" value="${s.qty}" onchange="stockSet('${s.id}',this.value)" style="width:58px;padding:6px;border:1.5px solid var(--hair);border-radius:8px;text-align:center">
+        <button onclick="stockAdj('${s.id}',1)">＋</button></div>
+        <span class="muted" style="font-size:11px">${esc(s.unite)}</span>
+        <button class="del" onclick="delStock('${s.id}')">🗑️</button></div></div>`;}).join(''):'<div class="empty">Aucun article</div>'}
+  </div>`;
+}
+function stockAdj(id,d){const s=(DB.stock||[]).find(x=>x.id===id);if(!s)return;s.qty=Math.max(0,(+s.qty||0)+d);save();}
+function stockSet(id,v){const s=(DB.stock||[]).find(x=>x.id===id);if(!s)return;s.qty=Math.max(0,+v||0);save();}
+function delStock(id){if(confirm('Supprimer cet article ?')){DB.stock=(DB.stock||[]).filter(x=>x.id!==id);save();}}
+function openStockModal(){openSheet(`<h3>➕ Nouvel article de stock</h3>
+  <div class="field"><label>Nom</label><input id="sk-nom" placeholder="ex: Savon liquide"></div>
+  <div class="inline">
+    <div class="field"><label>Quantité</label><input type="number" step="any" id="sk-qty" value="0"></div>
+    <div class="field"><label>Unité</label><input id="sk-unite" placeholder="litre, sac…"></div>
+    <div class="field"><label>Seuil d'alerte</label><input type="number" step="any" id="sk-seuil" value="1"></div>
+  </div>
+  <button class="btn" onclick="saveStock()">Ajouter</button>`);}
+function saveStock(){const nom=document.getElementById('sk-nom').value.trim();if(!nom){toast('Entrez un nom');return;}
+  DB.stock=DB.stock||[];
+  DB.stock.push({id:uid(),nom,unite:document.getElementById('sk-unite').value.trim()||'unité',
+    qty:+document.getElementById('sk-qty').value||0,seuil:+document.getElementById('sk-seuil').value||0});
+  save();closeSheet();toast('✓ Article ajouté');}
 
 /* ============================================================ DÉPENSES ============================================================ */
 const DEP_CATS=['Ration personnel','Loyer lavage','Loyer café','Salaires','Produits nettoyage','Achat nourriture','Autres'];
@@ -973,9 +1184,12 @@ function renderDep(){
   const ne=document.getElementById('e-net');ne.innerHTML=FR(net)+' <small>FCFA</small>';ne.className='val '+(net>=0?'up':'down');
   const rows=md.slice().sort((a,b)=>new Date(b.ts)-new Date(a.ts));
   document.getElementById('e-list').innerHTML=rows.length?rows.map(d=>
-    `<div class="row"><div class="l"><span class="dot" style="background:var(--dep)"></span>
-     <div><div class="nm">${d.categorie}</div><div class="mt">${new Date(d.ts).toLocaleDateString('fr-FR')}${d.note?' · '+d.note:''}</div></div></div>
-     <div class="r down">-${money(d.montant)} <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense ce mois</div>';
+    `<div class="row"><div class="l"><span class="dot" style="background:${d.invest?'var(--brand)':'var(--dep)'}"></span>
+     <div><div class="nm">${esc(d.categorie)} ${d.invest?'<span class="pill">🏗️ Investissement</span>':''}</div>
+     <div class="mt">${new Date(d.ts).toLocaleDateString('fr-FR')}${d.note?' · '+esc(d.note):''}${d.invest?' · amorti sur '+(d.amortMois||24)+' mois':''}</div></div></div>
+     <div class="r down" style="display:flex;gap:6px;align-items:center">-${money(d.montant)}
+     <button class="btn sm sec" style="padding:5px 8px" onclick="toggleInvest('${d.id}')" title="Marquer comme investissement">🏗️</button>
+     <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense ce mois</div>';
 }
 function openDepModal(){openSheet(`<h3>➕ Nouvelle dépense</h3>
   <div class="field"><label>Catégorie</label><select id="m-cat">${DEP_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
@@ -988,11 +1202,23 @@ function openDepModal(){openSheet(`<h3>➕ Nouvelle dépense</h3>
       <button class="btn sm sec" type="button" onclick="setDepDate(1)">Hier</button>
       <button class="btn sm sec" type="button" onclick="setDepDate(2)">Avant-hier</button>
     </div></div>
+  <label style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;font-size:13.5px;font-weight:600">
+    <input type="checkbox" id="m-inv" style="width:auto" onchange="document.getElementById('m-amort-wrap').style.display=this.checked?'block':'none'">
+    🏗️ C'est un investissement (équipement durable : frigo, panneaux, machine…)</label>
+  <div class="field" id="m-amort-wrap" style="display:none"><label>Étalé (amorti) sur combien de mois ?</label>
+    <input type="number" id="m-amort" value="24" inputmode="numeric"></div>
   <button class="btn" onclick="saveDep()">Enregistrer</button>`);}
+function toggleInvest(id){const d=(DB.depenses||[]).find(x=>x.id===id);if(!d)return;
+  if(d.invest){d.invest=false;delete d.amortMois;toast('Reclassé en charge');}
+  else{d.invest=true;d.amortMois=d.amortMois||24;toast('🏗️ Investissement (amorti sur 24 mois)');}
+  save();}
 function setDepDate(daysAgo){const d=new Date();d.setDate(d.getDate()-daysAgo);document.getElementById('m-date').value=dayKey(d);}
 function saveDep(){const m=+document.getElementById('m-mnt').value;if(!m){toast('Entrez un montant');return;}
   const dstr=document.getElementById('m-date').value||todayKey();
-  DB.depenses.push({id:uid(),ts:new Date(dstr+'T12:00:00').toISOString(),categorie:document.getElementById('m-cat').value,montant:m,note:document.getElementById('m-note').value.trim()});
+  const inv=document.getElementById('m-inv').checked;
+  const dep={id:uid(),ts:new Date(dstr+'T12:00:00').toISOString(),categorie:document.getElementById('m-cat').value,montant:m,note:document.getElementById('m-note').value.trim()};
+  if(inv){dep.invest=true;dep.amortMois=Math.max(1,+document.getElementById('m-amort').value||24);}
+  DB.depenses.push(dep);
   save();closeSheet();toast('✓ Dépense ajoutée');renderDep();}
 function delDep(id){DB.depenses=DB.depenses.filter(d=>d.id!==id);save();renderDep();}
 function openRationModal(){openSheet(`<h3>🍚 Ration quotidienne du personnel</h3>
@@ -1012,22 +1238,59 @@ function genRation(){
 }
 
 /* ============================================================ ANALYSE ============================================================ */
+let anaFrom=null,anaTo=null;
+const ventesRange=(f,t)=>DB.ventes.filter(v=>{const k=dayKey(v.ts);return k>=f&&k<=t;});
+function anaInit(){if(!anaFrom||!anaTo){const t=new Date(),f=new Date();f.setDate(f.getDate()-29);anaFrom=dayKey(f);anaTo=dayKey(t);}}
+function setAnaPreset(p){const t=new Date();
+  if(p==='7'){const f=new Date();f.setDate(f.getDate()-6);anaFrom=dayKey(f);anaTo=dayKey(t);}
+  else if(p==='30'){const f=new Date();f.setDate(f.getDate()-29);anaFrom=dayKey(f);anaTo=dayKey(t);}
+  else if(p==='mois'){anaFrom=dayKey(new Date(t.getFullYear(),t.getMonth(),1));anaTo=dayKey(t);}
+  else if(p==='tout'){const ks=DB.ventes.map(v=>dayKey(v.ts)).concat((DB.depenses||[]).map(d=>dayKey(d.ts))).sort();
+    if(ks.length){anaFrom=ks[0];anaTo=ks[ks.length-1];}}
+  renderAna();}
+function anaSetDate(w,v){if(!v)return;if(w==='from')anaFrom=v;else anaTo=v;
+  if(anaFrom>anaTo){const x=anaFrom;anaFrom=anaTo;anaTo=x;}renderAna();}
 function renderAna(){
-  const v30=ventesSince(nDaysAgo(30));
-  const byCat={};v30.forEach(v=>{const c=['cafe','jus','plat'].includes(v.cat)?'cafe_resto':'lavage';byCat[c]=(byCat[c]||0)+benefOf(v);});
+  anaInit();
+  document.getElementById('a-from').value=anaFrom;
+  document.getElementById('a-to').value=anaTo;
+  const vr=ventesRange(anaFrom,anaTo);
+  const dr=(DB.depenses||[]).filter(d=>{const k=dayKey(d.ts);return k>=anaFrom&&k<=anaTo;});
+  const nbJours=Math.round((new Date(anaTo+'T12:00:00')-new Date(anaFrom+'T12:00:00'))/86400000)+1;
+  const ca=sum(vr,caOf),coutP=sum(vr,v=>v.qty*(v.cout||0));
+  const charges=sum(dr.filter(d=>!d.invest),d=>d.montant);
+  const benef=ca-coutP-charges,marge=ca>0?benef/ca*100:0;
+  document.getElementById('a-range').innerHTML=`<b>${nbJours} jours</b> — du ${new Date(anaFrom+'T12:00:00').toLocaleDateString('fr-FR')} au ${new Date(anaTo+'T12:00:00').toLocaleDateString('fr-FR')}`;
+  document.getElementById('a-kpi').innerHTML=`
+    <div class="stat hero"><div class="lbl">Chiffre d'affaires</div><div class="val">${FR(ca)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Bénéfice (hors investissements)</div><div class="val ${benef>=0?'up':'down'}">${FR(benef)} <small>FCFA</small></div></div>
+    <div class="stat"><div class="lbl">Marge</div><div class="val ${marge>=25?'up':'down'}">${marge.toFixed(0)}%</div></div>
+    <div class="stat"><div class="lbl">CA moyen / jour</div><div class="val">${FR(nbJours?ca/nbJours:0)} <small>FCFA</small></div></div>`;
+  const byCat={};vr.forEach(v=>{const c=['cafe','jus','plat'].includes(v.cat)?'cafe_resto':'lavage';byCat[c]=(byCat[c]||0)+benefOf(v);});
   const actLabel={lavage:'🚗 Lavage',cafe_resto:'☕ Café/Resto'},bestAct=Object.entries(byCat).sort((a,b)=>b[1]-a[1])[0];
   document.getElementById('a-act').textContent=bestAct?actLabel[bestAct[0]]:'—';
-  const byProd={};v30.forEach(v=>{byProd[v.nom]=(byProd[v.nom]||0)+benefOf(v);});
+  const byProd={};vr.forEach(v=>{byProd[v.nom]=(byProd[v.nom]||0)+benefOf(v);});
   const bestProd=Object.entries(byProd).sort((a,b)=>b[1]-a[1])[0];document.getElementById('a-prod').textContent=bestProd?bestProd[0]:'—';
-  drawWeekdayChart();
+  drawWeekdayChart(vr);
   const cats=['lavage','cafe','jus','plat'];
-  document.getElementById('a-mix').innerHTML=cats.map(c=>{const b=sum(v30.filter(v=>v.cat===c),benefOf),ca=sum(v30.filter(v=>v.cat===c),caOf);
+  document.getElementById('a-mix').innerHTML=cats.map(c=>{const b=sum(vr.filter(v=>v.cat===c),benefOf),cc=sum(vr.filter(v=>v.cat===c),caOf);
     return `<div class="row"><div class="l"><span class="dot" style="background:${CAT[c].color}"></span><span class="nm">${CAT[c].nom}</span></div>
-      <div class="r">${money(b)} <span class="muted" style="font-weight:500">bénéfice</span><div class="mt" style="color:var(--muted);font-weight:500">CA ${money(ca)}</div></div></div>`;}).join('');
-  renderReco(v30);
+      <div class="r">${money(b)} <span class="muted" style="font-weight:500">marge</span><div class="mt" style="color:var(--muted);font-weight:500">CA ${money(cc)}</div></div></div>`;}).join('');
+  const agg={};vr.forEach(v=>{agg[v.nom]=agg[v.nom]||{nom:v.nom,cat:v.cat,qty:0,ca:0};agg[v.nom].qty+=v.qty;agg[v.nom].ca+=caOf(v);});
+  const top=Object.values(agg).sort((a,b)=>b.ca-a.ca).slice(0,8);
+  document.getElementById('a-top').innerHTML=top.length?top.map((t,i)=>
+    `<div class="row"><div class="l"><b style="width:18px;color:var(--muted)">${i+1}</b><span class="dot" style="background:${CAT[t.cat].color}"></span>
+     <span class="nm">${esc(t.nom)}</span></div><div class="r">${money(t.ca)}<div class="mt" style="font-weight:500;color:var(--muted)">${t.qty} vendus</div></div></div>`).join(''):'<div class="empty">Aucune vente sur la période</div>';
+  const team={};vr.forEach(v=>{if(!v.par)return;team[v.par]=team[v.par]||{ca:0,qty:0};team[v.par].ca+=caOf(v);team[v.par].qty+=v.qty;});
+  const trows=Object.entries(team).sort((a,b)=>b[1].ca-a[1].ca);
+  document.getElementById('a-team').innerHTML=trows.length?trows.map(t=>
+    `<div class="row"><div class="l"><span style="font-size:16px">👤</span><span class="nm">${esc(t[0])}</span></div>
+     <div class="r">${money(t[1].ca)}<div class="mt" style="font-weight:500;color:var(--muted)">${t[1].qty} prestations</div></div></div>`).join('')
+    :'<div class="empty">Les saisies faites à partir de maintenant seront attribuées à leur auteur.</div>';
+  renderReco(vr);
 }
 function renderReco(v30){
-  const box=document.getElementById('a-reco'),R=[],wd=weekdayAverages(),active=wd.filter(x=>x.count>0);
+  const box=document.getElementById('a-reco'),R=[],wd=weekdayAverages(v30),active=wd.filter(x=>x.count>0);
   if(active.length>=3){const s=active.slice().sort((a,b)=>a.avg-b.avg);const weak=s[0],strong=s[s.length-1];
     R.push({t:'warn',ic:'📉',x:`Jour le plus faible : <b>${JOURS[weak.d]}</b> (${money(weak.avg)} en moyenne). Lancez une promo ce jour-là.`});
     R.push({t:'good',ic:'📈',x:`Meilleur jour : <b>${JOURS[strong.d]}</b> (${money(strong.avg)}). Prévoyez stock et personnel.`});}
@@ -1460,10 +1723,10 @@ function drawDailyBars(id,filter,valFn,color){const data=[];for(let i=29;i>=0;i-
   const {ctx,w,h}=setupCanvas(id);const max=Math.max(...data.map(d=>d.v),1),gh=h-16,gap=w/data.length,bw=gap*0.66;
   data.forEach((d,i)=>{const bh=Math.max(d.v/max*gh,d.v>0?2:0);ctx.fillStyle=d.v>0?color:'#eceef1';roundRect(ctx,i*gap+(gap-bw)/2,gh-bh+2,bw,bh||2,3);ctx.fill();});
   ctx.fillStyle='#98a2b3';ctx.font='9px system-ui';ctx.textAlign='left';ctx.fillText('30 derniers jours',2,h-2);ctx.textAlign='right';ctx.fillText('max: '+FR(max),w-2,h-2);}
-function weekdayAverages(){const map={};for(let i=0;i<7;i++)map[i]={sum:0,days:new Set()};
-  ventesSince(nDaysAgo(60)).forEach(v=>{const d=new Date(v.ts);map[d.getDay()].sum+=caOf(v);map[d.getDay()].days.add(dayKey(v.ts));});
+function weekdayAverages(list){const src=list||ventesSince(nDaysAgo(60));const map={};for(let i=0;i<7;i++)map[i]={sum:0,days:new Set()};
+  src.forEach(v=>{const d=new Date(v.ts);map[d.getDay()].sum+=caOf(v);map[d.getDay()].days.add(dayKey(v.ts));});
   return Object.keys(map).map(d=>({d:+d,avg:map[d].days.size?map[d].sum/map[d].days.size:0,count:map[d].days.size}));}
-function drawWeekdayChart(){const wd=weekdayAverages(),order=[1,2,3,4,5,6,0].map(d=>wd.find(x=>x.d===d)),{ctx,w,h}=setupCanvas('a-chart');
+function drawWeekdayChart(list){const wd=weekdayAverages(list),order=[1,2,3,4,5,6,0].map(d=>wd.find(x=>x.d===d)),{ctx,w,h}=setupCanvas('a-chart');
   const max=Math.max(...order.map(d=>d.avg),1),gap=w/7,bw=Math.min(gap*0.56,48),gh=h-24,padT=8;
   order.forEach((d,i)=>{const bh=Math.max(d.avg/max*gh,d.avg>0?3:0),x=i*gap+(gap-bw)/2,y=padT+gh-bh;
     ctx.fillStyle=d.avg>0?'#7c3aed':'#eceef1';roundRect(ctx,x,y,bw,bh||3,4);ctx.fill();

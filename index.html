@@ -474,6 +474,7 @@
         </div>
         <button class="btn mt" onclick="openDepModal()">➕ Ajouter une dépense</button>
         <button class="btn sec mt" onclick="openRationModal()">🍚 Ration quotidienne du personnel (2000 F/jour)</button>
+        <button class="btn sec mt" onclick="openInvestDetect()">🏗️ Détecter mes investissements (équipement durable)</button>
         <div class="card mt"><h3>Dépenses récentes</h3><div id="e-list"></div></div>
       </section>
 
@@ -1415,6 +1416,34 @@ function openDepModal(){openSheet(`<h3>➕ Nouvelle dépense</h3>
   <div class="field" id="m-amort-wrap" style="display:none"><label>Étalé (amorti) sur combien de mois ?</label>
     <input type="number" id="m-amort" value="24" inputmode="numeric"></div>
   <button class="btn" onclick="saveDep()">Enregistrer</button>`);}
+const INV_KW=/frigo|\btv\b|t[ée]l[ée]vis|panneau|batterie|c[âa]blage|machine|peinture|thermos|support|installation|climatis|pav[ée]|affich|zed|[ée]quipement|mat[ée]riel|autorisation|compresseur|congelateur|cong[ée]lateur/i;
+const NOT_INV=/ration|essence|carburant|omo|savon|javel|loyer|salaire|abonnement|nourriture|\briz\b|charbon|gaz\b/i;
+function openInvestDetect(){
+  const cand=(DB.depenses||[]).filter(d=>!d.invest&&(+d.montant||0)>=3000
+    &&!NOT_INV.test(d.note||'')&&!NOT_INV.test(d.categorie||''));
+  if(!cand.length){toast('Aucun candidat détecté (tout est déjà classé)');return;}
+  const rows=cand.sort((a,b)=>b.montant-a.montant).map(d=>{
+    const pre=INV_KW.test(d.note||'')||(+d.montant||0)>=30000;
+    return `<label class="row" style="cursor:pointer">
+      <div class="l"><input type="checkbox" class="inv-chk" data-id="${d.id}" ${pre?'checked':''} style="width:auto;margin-right:4px">
+      <div><div class="nm">${esc(d.note||d.categorie)}</div>
+      <div class="mt">${new Date(d.ts).toLocaleDateString('fr-FR')} · ${esc(d.categorie)}</div></div></div>
+      <div class="r">${money(d.montant)}</div></label>`;}).join('');
+  openSheet(`<h3>🏗️ Détecter mes investissements</h3>
+    <div class="muted" style="font-size:12.5px;margin-bottom:10px">Cochez vos <b>achats durables</b> (frigo, TV, panneaux, machine…). Ils seront <b>étalés sur plusieurs mois</b> au lieu d'être comptés comme charges du mois — votre résultat deviendra enfin juste.</div>
+    <div class="field"><label>Étaler (amortir) sur combien de mois ?</label><input type="number" id="inv-mois" value="24" inputmode="numeric"></div>
+    <div style="max-height:42vh;overflow:auto;border:1px solid var(--hair);border-radius:12px;padding:4px 10px;margin-bottom:12px">${rows}</div>
+    <button class="btn" onclick="applyInvestDetect()">✅ Marquer les cases cochées comme investissements</button>`);
+}
+function applyInvestDetect(){
+  const m=Math.max(1,+document.getElementById('inv-mois').value||24);
+  let n=0,tot=0;
+  document.querySelectorAll('.inv-chk').forEach(c=>{if(!c.checked)return;
+    const d=(DB.depenses||[]).find(x=>x.id===c.dataset.id);if(!d)return;
+    d.invest=true;d.amortMois=m;n++;tot+=+d.montant||0;});
+  if(!n){toast('Aucune case cochée');return;}
+  save();closeSheet();toast('🏗️ '+n+' investissements marqués ('+money(tot)+')');
+}
 function toggleInvest(id){const d=(DB.depenses||[]).find(x=>x.id===id);if(!d)return;
   if(d.invest){d.invest=false;delete d.amortMois;toast('Reclassé en charge');}
   else{d.invest=true;d.amortMois=d.amortMois||24;toast('🏗️ Investissement (amorti sur 24 mois)');}

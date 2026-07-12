@@ -308,6 +308,7 @@
       <button data-v="pnl"><span class="i">🧮</span>Compte de résultat</button>
       <button data-v="stock"><span class="i">📦</span>Stock</button>
       <button data-v="ana"><span class="i">📈</span>Analyse</button>
+      <button data-v="conseil"><span class="i">💡</span>Conseils</button>
       <div class="side-sep"></div>
       <button data-v="set"><span class="i">⚙️</span>Réglages</button>
       <button data-v="users"><span class="i">👤</span>Utilisateurs</button>
@@ -476,6 +477,12 @@
         <div class="card mt"><h3>Dépenses récentes</h3><div id="e-list"></div></div>
       </section>
 
+      <!-- ================= CONSEILS ================= -->
+      <section class="view" id="v-conseil">
+        <div class="cat-tabs" id="cs-tabs"></div>
+        <div id="cs-body"></div>
+      </section>
+
       <!-- ================= CAISSE DU JOUR ================= -->
       <section class="view" id="v-caisse">
         <div class="card">
@@ -629,7 +636,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const CAT={lavage:{nom:'Lavage',color:'var(--wash)',ico:'🚗'},cafe:{nom:'Café',color:'var(--cafe)',ico:'☕'},
   jus:{nom:'Jus',color:'var(--jus)',ico:'🧃'},plat:{nom:'Plats',color:'var(--plat)',ico:'🍛'}};
 const JOURS=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-const TITRES={home:'Tableau de bord',receipt:'Nouveau reçu / arrivée',daily:'Saisie de la journée',wash:'Lavage auto',cafe:'Café & Restauration',clients:'Clients fidèles',recipes:'Rentabilité par portion',caisse:'Caisse du jour',dep:'Dépenses',pnl:'Compte de résultat',stock:'Stock',ana:'Analyse',set:'Réglages',users:'Utilisateurs'};
+const TITRES={home:'Tableau de bord',receipt:'Nouveau reçu / arrivée',daily:'Saisie de la journée',wash:'Lavage auto',cafe:'Café & Restauration',clients:'Clients fidèles',recipes:'Rentabilité par portion',caisse:'Caisse du jour',dep:'Dépenses',pnl:'Compte de résultat',stock:'Stock',ana:'Analyse',conseil:'Conseils pour gagner plus',set:'Réglages',users:'Utilisateurs'};
 
 function defaults(){return{
   settings:{objectifJour:30000,loyaltyN:5,business:'Mon Business',serverUrl:'',autoSync:false,receiptSeq:1},
@@ -705,14 +712,14 @@ const caOf=v=>v.qty*v.pu, benefOf=v=>v.qty*(v.pu-(v.cout||0)), sum=(a,f)=>a.redu
 /* ---- Rôles & permissions ---- */
 const ROLE_LABEL={admin:'Administrateur',gestionnaire:'Gestionnaire',agent:'Agent',demo:'Visiteur (démo)'};
 const PERMS={
-  admin:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana','set','users'],
-  gestionnaire:['home','cafe','receipt','clients','recipes','caisse','pnl','stock'],
+  admin:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana','conseil','set','users'],
+  gestionnaire:['home','cafe','receipt','clients','recipes','caisse','pnl','stock','conseil'],
   agent:['daily'],
-  demo:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana']
+  demo:['home','receipt','daily','wash','cafe','clients','recipes','caisse','dep','pnl','stock','ana','conseil']
 };
 const HOME_VIEW={admin:'home',gestionnaire:'home',agent:'daily',demo:'home'};
 const NAVMETA={home:{i:'🏠',l:'Accueil'},daily:{i:'📋',l:'Saisie'},receipt:{i:'🧾',l:'Reçu'},wash:{i:'🚗',l:'Lavage'},
-  caisse:{i:'💵',l:'Caisse'},pnl:{i:'🧮',l:'Résultat'},stock:{i:'📦',l:'Stock'},
+  caisse:{i:'💵',l:'Caisse'},pnl:{i:'🧮',l:'Résultat'},stock:{i:'📦',l:'Stock'},conseil:{i:'💡',l:'Conseils'},
   cafe:{i:'☕',l:'Café'},clients:{i:'🎫',l:'Clients'},recipes:{i:'🍲',l:'Rentab.'},dep:{i:'💸',l:'Dépenses'},ana:{i:'📈',l:'Analyse'},set:{i:'⚙️',l:'Réglages'},users:{i:'👤',l:'Compte'}};
 const TABBAR_ORDER={admin:['home','recipes','receipt','cafe','ana'],gestionnaire:['home','cafe','receipt','recipes'],agent:['daily'],demo:['home','recipes','receipt','cafe','ana']};
 let currentUser=null;
@@ -790,7 +797,7 @@ document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>go(b.dataset.v));
 function render(){
   document.getElementById('pageDate').textContent=new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   document.querySelectorAll('.js-brand').forEach(e=>e.textContent=DB.settings.business||'Mon Business');
-  ({home:renderHome,receipt:renderReceipt,daily:renderDaily,wash:renderWash,cafe:renderCafe,clients:renderClients,recipes:renderRecipes,caisse:renderCaisse,dep:renderDep,pnl:renderPnl,stock:renderStock,ana:renderAna,set:renderSet,users:renderUsers}[cur]||(()=>{}))();
+  ({home:renderHome,receipt:renderReceipt,daily:renderDaily,wash:renderWash,cafe:renderCafe,clients:renderClients,recipes:renderRecipes,caisse:renderCaisse,dep:renderDep,pnl:renderPnl,stock:renderStock,ana:renderAna,conseil:renderConseil,set:renderSet,users:renderUsers}[cur]||(()=>{}))();
 }
 
 /* ============================================================ DASHBOARD ============================================================ */
@@ -1030,6 +1037,206 @@ function waRelance(id){
   window.open('https://wa.me/'+p+'?text='+encodeURIComponent(msg),'_blank');
 }
 function delCustomer(id){if(confirm('Supprimer ce client ?')){DB.customers=DB.customers.filter(c=>c.id!==id);save();renderClients();}}
+
+/* ============================================================ CONSEILS (moteur d'aide à la décision) ============================================================ */
+let csTab='diag',simC={boisson:40,prixB:300,aspi:25,tapisSem:2,abo:5};
+function conseilStats(){
+  const all=DB.ventes||[];
+  const ks=[...new Set(all.map(v=>dayKey(v.ts)))];
+  const nbJours=Math.max(1,ks.length);
+  const lav=all.filter(v=>v.cat==='lavage'),caf=all.filter(v=>v.cat!=='lavage');
+  const caLav=sum(lav,caOf),caCaf=sum(caf,caOf),nbLav=sum(lav,v=>v.qty);
+  const prem=lav.filter(v=>!/simple/i.test(v.nom)&&!/tapis/i.test(v.nom));
+  const nbPrem=sum(prem,v=>v.qty);
+  const voit=lav.filter(v=>/citadine|suv|taxi/i.test(v.nom));
+  const nbVoit=sum(voit,v=>v.qty);
+  const tapis=sum(lav.filter(v=>/tapis/i.test(v.nom)),v=>v.qty);
+  const wd=weekdayAverages(all).filter(x=>x.count>0).sort((a,b)=>a.avg-b.avg);
+  const dep=DB.depenses||[];
+  const investCafe=sum(dep.filter(d=>/frigo|tv|caf[ée]|thermos|canal|smart/i.test(d.note||'')),d=>d.montant);
+  const investSolaire=sum(dep.filter(d=>/panneau|batterie|c[âa]blage|solaire/i.test(d.note||'')),d=>d.montant);
+  return {nbJours,caLav,caCaf,nbLav,lavJour:nbLav/nbJours,panier:nbLav?caLav/nbLav:0,
+    pctPrem:nbLav?nbPrem/nbLav*100:0,nbVoit,voitMois:nbVoit/nbJours*30,tapis,tapisMois:tapis/nbJours*30,
+    weak:wd[0],strong:wd[wd.length-1],caLavMois:caLav/nbJours*30,caCafMois:caCaf/nbJours*30,
+    nbClients:(DB.customers||[]).length,investCafe,investSolaire};
+}
+function conseilActions(S){
+  const A=[],M=n=>money(Math.round(n));
+  if(S.caCafMois<S.caLavMois*0.15)A.push({ico:'☕',t:"Réveillez votre café — c'est votre plus gros trou",
+    why:`Vous avez investi <b>${M(S.investCafe)}</b> en frigo, TV, machine à café et Canal+… mais le café ne rapporte que <b>${M(S.caCafMois)}/mois</b>. Pendant ce temps, <b>${S.lavJour.toFixed(1)} clients/jour</b> attendent 20 à 30 minutes sans rien acheter.`,
+    how:"Proposez SYSTÉMATIQUEMENT une boisson pendant l'attente : eau fraîche 100 F, thé/kinkeliba 200 F, jus 300 F. Mettez le frigo bien en vue, juste à côté des clients qui attendent.",
+    gain:S.lavJour*30*0.4*300*0.65});
+  if(S.pctPrem<10&&S.voitMois>0)A.push({ico:'🚿',t:"Vendez l'aspiration en plus (+500 F par voiture)",
+    why:`<b>${(100-S.pctPrem).toFixed(0)}%</b> de vos lavages sont des lavages <b>simples</b>. Vous ne vendez presque jamais l'aspiration, le soufflage ou le polish — alors qu'ils sont déjà dans votre catalogue.`,
+    how:"Une seule phrase à chaque voiture : « Je vous fais l'aspiration intérieure pour 500 F de plus ? ». Si 1 client sur 4 accepte, voilà le gain — sans investir 1 franc.",
+    gain:S.voitMois*0.25*500});
+  if(S.nbClients<10)A.push({ico:'🎫',t:"Notez le téléphone de vos clients",
+    why:`Vous avez <b>${S.nbClients} client(s) enregistré(s)</b>. Votre programme « 6ᵉ lavage offert » ne sert donc à rien, et vous ne pouvez relancer personne.`,
+    how:"À chaque lavage, demandez le numéro (écran ＋ Nouveau reçu). Ensuite un clic sur 📲 envoie un WhatsApp : « Votre lavage est offert ! ». Un client relancé revient 2 fois plus souvent.",
+    gain:S.caLavMois*0.15});
+  if(S.weak&&S.strong&&S.strong.avg>S.weak.avg*1.25)A.push({ico:'📉',t:`Remplissez vos ${JOURS[S.weak.d]}s (votre jour mort)`,
+    why:`Le <b>${JOURS[S.weak.d]}</b> vous faites <b>${M(S.weak.avg)}</b> en moyenne, contre <b>${M(S.strong.avg)}</b> le <b>${JOURS[S.strong.d]}</b>. C'est de l'argent perdu chaque semaine.`,
+    how:`Promo « ${JOURS[S.weak.d]} » : moto lavée à prix réduit, ou lavage + thé offert. Annoncez-le la veille par WhatsApp à vos clients enregistrés.`,
+    gain:(S.strong.avg-S.weak.avg)*0.5*4.3});
+  if(S.tapisMois<5)A.push({ico:'🧽',t:"Poussez le lavage de tapis — votre produit le plus rentable",
+    why:`Un tapis vous rapporte <b>1 500 à 6 000 F</b> l'unité, contre <b>${M(S.panier)}</b> pour un lavage moyen. Mais vous n'en faites que <b>${S.tapisMois.toFixed(1)} par mois</b>.`,
+    how:"Une affiche « LAVAGE DE TAPIS ET MOQUETTES » + un message WhatsApp à vos clients. Proposez d'aller chercher le tapis à domicile : personne ne le fait.",
+    gain:8*2500*0.7});
+  A.push({ico:'🎟️',t:"Vendez des abonnements aux taxis et taxi-motos",
+    why:`Vos taxis et motos sont des <b>professionnels</b> qui lavent souvent. Aujourd'hui ils paient à l'unité — s'ils vont ailleurs demain, vous ne gardez rien.`,
+    how:"Carte « 10 lavages payés d'avance = 9 000 F au lieu de 10 000 », ou abonnement 5 000 F/mois lavages illimités. Vous encaissez d'avance et vous les verrouillez.",
+    gain:10*5000*0.6});
+  if(S.investSolaire>100000)A.push({ico:'🔌',t:"Rentabilisez vos panneaux solaires",
+    why:`Vous avez investi <b>${M(S.investSolaire)}</b> en panneaux et batteries. Votre électricité est <b>gratuite</b> — c'est un actif que personne n'exploite.`,
+    how:"Point de charge téléphone à 100 F. Ventilateur + TV allumés : les gens restent et consomment. Vous pouvez même vendre de la glace (eau congelée) — très demandé.",
+    gain:12*30*100*0.9});
+  return A.sort((a,b)=>b.gain-a.gain);
+}
+const SERVICES_MALI=[
+  {ico:'💧',nom:'Eau fraîche (sachet & bouteille)',prix:'100 – 500 F',inv:'0 F — frigo déjà acheté',gain:'15 000 – 40 000 F/mois',bourse:true,
+   why:"Vos clients attendent au soleil. Le sachet d'eau à 100 F se vend tout seul, marge 60 %. Vous avez DÉJÀ le frigo (330 000 F) qui ne sert à rien."},
+  {ico:'⚽',nom:'Diffusion des matchs (Canal+)',prix:'Consommation 200 F mini',inv:'0 F — abonnement déjà payé',gain:'30 000 – 80 000 F/mois',bourse:true,
+   why:"Vous payez Canal+ et vous avez la TV. Les soirs de match, le lieu se remplit → boissons, thé, brochettes. C'est votre actif le plus sous-exploité."},
+  {ico:'☕',nom:'Thé, kinkeliba, café au lait',prix:'100 – 250 F',inv:'Faible — thermos déjà acheté',gain:'20 000 – 50 000 F/mois',bourse:true,
+   why:"Boisson chaude à petit prix : accessible à toutes les bourses, marge 60-70 %. Vous avez déjà le thermos kinkeliba."},
+  {ico:'🍳',nom:'Petit-déjeuner ouvrier',prix:'300 – 500 F',inv:'Faible',gain:'30 000 – 90 000 F/mois',bourse:true,
+   why:"Pain + omelette + café à 500 F : le format qui marche avec une clientèle à petite bourse. Le matin, avant les lavages."},
+  {ico:'🎟️',nom:"Carte d'abonnement lavage",prix:'9 000 F les 10 lavages',inv:'Impression des cartes',gain:'Trésorerie + fidélité',bourse:true,
+   why:"Le client paie D'AVANCE : vous encaissez tout de suite et il revient forcément. Parfait pour les taxis et taxi-motos."},
+  {ico:'📱',nom:'Recharges téléphone & Mobile Money',prix:'Marge 3 – 7 %',inv:'20 000 – 50 000 F de flotte',gain:'10 000 – 25 000 F/mois',bourse:true,
+   why:"Petite marge, mais fait VENIR du monde tous les jours. Celui qui recharge son crédit voit votre lavage et votre café."},
+  {ico:'🔌',nom:'Point de charge téléphone',prix:'100 F la charge',inv:'Multiprise — solaire déjà installé',gain:'5 000 – 15 000 F/mois',bourse:true,
+   why:"Votre électricité est gratuite (panneaux solaires). Faire payer 100 F la charge, c'est de la marge pure."},
+  {ico:'💨',nom:'Gonflage pneus / pression',prix:'100 F ou offert',inv:'Compresseur',gain:'Attire et fidélise',bourse:true,
+   why:"Service d'appel : même offert, il fait venir des gens qui finissent par laver ou consommer."},
+  {ico:'🧽',nom:'Lavage tapis & moquettes à domicile',prix:'2 000 – 6 000 F',inv:'0 F',gain:'20 000 – 60 000 F/mois',bourse:false,
+   why:"Votre produit le PLUS rentable à l'unité, et vous n'en faites presque pas. Une affiche + WhatsApp suffisent. Personne ne va chercher le tapis à domicile."},
+  {ico:'🌸',nom:'Désodorisant & produits auto',prix:'200 – 1 000 F',inv:'15 000 F de stock',gain:'10 000 – 30 000 F/mois',bourse:false,
+   why:"Vente additionnelle au moment de payer : « je vous mets un désodorisant ? ». Marge supérieure à 50 %."},
+  {ico:'🧊',nom:'Vente de glace / eau congelée',prix:'100 – 200 F',inv:'0 F — frigo + solaire déjà là',gain:'10 000 – 30 000 F/mois',bourse:true,
+   why:"Congeler de l'eau ne vous coûte rien (électricité solaire gratuite). Très demandé en saison chaude au Mali."}
+];
+function csSet(t){csTab=t;renderConseil();}
+function csSim(k,v){simC[k]=+v||0;renderConseil();}
+function renderConseil(){
+  const S=conseilStats(),M=n=>money(Math.round(n));
+  const tabs=[['diag','📊 Diagnostic'],['actions','🎯 Actions prioritaires'],['produits','🛒 Produits à proposer'],['services','🇲🇱 Services annexes'],['sim','🧮 Simulateur de gain']];
+  document.getElementById('cs-tabs').innerHTML=tabs.map(t=>`<button class="cat-tab ${t[0]===csTab?'on':''}" onclick="csSet('${t[0]}')">${t[1]}</button>`).join('');
+  const B=document.getElementById('cs-body');
+  if(!DB.ventes.length){B.innerHTML='<div class="card"><div class="empty">Saisissez quelques ventes : les conseils se calculent à partir de vos chiffres réels.</div></div>';return;}
+
+  if(csTab==='diag'){
+    const A=conseilActions(S),potentiel=sum(A,a=>a.gain);
+    B.innerHTML=`
+    <div class="dash-stats">
+      <div class="stat hero"><div class="lbl">Potentiel de gain identifié</div><div class="val">+${FR(potentiel)} <small>FCFA/mois</small></div></div>
+      <div class="stat"><div class="lbl">Panier moyen par lavage</div><div class="val">${FR(S.panier)} <small>FCFA</small></div></div>
+      <div class="stat"><div class="lbl">Lavages par jour</div><div class="val">${S.lavJour.toFixed(1)}</div></div>
+      <div class="stat"><div class="lbl">Clients fidélisés</div><div class="val ${S.nbClients<10?'down':'up'}">${S.nbClients}</div></div>
+    </div>
+    <div class="card"><h3>📊 Ce que vos chiffres disent</h3>
+      <div class="reco ${S.caCafMois<S.caLavMois*0.15?'warn':'good'}"><div class="ic">☕</div><div class="tx">
+        <b>Café / restaurant :</b> ${M(S.caCafMois)}/mois contre ${M(S.caLavMois)}/mois pour le lavage.
+        ${S.caCafMois<S.caLavMois*0.15?`Votre café représente <b>${(S.caLavMois?S.caCafMois/S.caLavMois*100:0).toFixed(0)}%</b> du lavage alors que vous y avez mis <b>${M(S.investCafe)}</b> d'équipement. <b>C'est votre plus gros levier.</b>`:'Bon équilibre.'}
+      </div></div>
+      <div class="reco ${S.pctPrem<10?'warn':'good'}"><div class="ic">🚿</div><div class="tx">
+        <b>Prestations premium :</b> seulement <b>${S.pctPrem.toFixed(0)}%</b> de vos lavages incluent aspiration/soufflage/polish.
+        ${S.pctPrem<10?'Vous vendez presque uniquement du « lavage simple » — le moins rentable.':''}
+      </div></div>
+      <div class="reco ${S.nbClients<10?'warn':'good'}"><div class="ic">🎫</div><div class="tx">
+        <b>Fidélisation :</b> ${S.nbClients} client(s) enregistré(s). ${S.nbClients<10?'Sans numéro de téléphone, impossible de faire revenir les gens.':''}
+      </div></div>
+      ${S.weak&&S.strong?`<div class="reco"><div class="ic">📅</div><div class="tx"><b>Rythme de la semaine :</b> votre meilleur jour est le <b>${JOURS[S.strong.d]}</b> (${M(S.strong.avg)}), le plus faible le <b>${JOURS[S.weak.d]}</b> (${M(S.weak.avg)}).</div></div>`:''}
+      <div class="reco"><div class="ic">🧽</div><div class="tx"><b>Tapis :</b> ${S.tapisMois.toFixed(1)}/mois. C'est votre article le plus rentable à l'unité et vous le vendez très peu.</div></div>
+    </div>`;
+  }
+
+  else if(csTab==='actions'){
+    const A=conseilActions(S);
+    B.innerHTML=`<div class="card"><h3>🎯 À faire, classé par argent gagné</h3>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">Gains estimés à partir de VOS chiffres. Commencez par le haut.</div>
+      ${A.map((a,i)=>`
+      <div class="ing" style="background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px">
+          <div style="display:flex;gap:10px;align-items:center"><span style="font-size:24px">${a.ico}</span>
+            <div><div style="font-weight:800;font-size:15px">${i+1}. ${a.t}</div></div></div>
+          <span class="pill" style="background:var(--brand-l);color:var(--brand-d);white-space:nowrap">+${FR(a.gain)} F/mois</span>
+        </div>
+        <div style="font-size:13.5px;line-height:1.5;color:var(--muted);margin-bottom:8px">${a.why}</div>
+        <div class="reco good" style="margin:0"><div class="ic">👉</div><div class="tx">${a.how}</div></div>
+      </div>`).join('')}
+      <div class="row" style="border-top:2px solid var(--hair);padding-top:12px"><div class="l"><b>Potentiel total</b></div>
+        <div class="r"><b style="color:var(--brand);font-size:18px">+${FR(sum(A,a=>a.gain))} FCFA/mois</b></div></div>
+    </div>`;
+  }
+
+  else if(csTab==='produits'){
+    const items=[
+      {ico:'💧',n:'Eau fraîche en sachet',p:100,m:60,q:S.lavJour*30*0.5,w:"Le plus facile à vendre. Tout le monde a 100 F."},
+      {ico:'☕',n:'Thé / kinkeliba',p:200,m:65,q:S.lavJour*30*0.25,w:"Boisson chaude bon marché, forte marge."},
+      {ico:'🧃',n:'Jus local (bissap, gingembre)',p:300,m:65,q:S.lavJour*30*0.2,w:"Fait maison = marge maximale."},
+      {ico:'🚿',n:'Aspiration intérieure (+)',p:500,m:90,q:S.voitMois*0.25,w:"Aucun produit à acheter : c'est du temps de travail. Marge quasi totale."},
+      {ico:'🌸',n:'Désodorisant voiture',p:500,m:55,q:S.voitMois*0.15,w:"Proposé au moment de payer, ça se vend tout seul."},
+      {ico:'🍞',n:'Petit-déjeuner (pain + omelette)',p:500,m:50,q:S.lavJour*30*0.15,w:"Le matin, avant les lavages. Format « petite bourse »."},
+      {ico:'🧊',n:'Glace / eau congelée',p:150,m:85,q:S.lavJour*30*0.2,w:"Électricité solaire gratuite = marge énorme."}
+    ];
+    const tot=sum(items,x=>x.q*x.p*x.m/100);
+    B.innerHTML=`<div class="card"><h3>🛒 Ce que vous devriez proposer à chaque client</h3>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">Adapté à une clientèle à <b>faible pouvoir d'achat</b> : petits prix, forte rotation, forte marge.</div>
+      <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Produit</th><th>Prix</th><th>Marge</th><th>Ventes/mois estimées</th><th style="text-align:right">Bénéfice/mois</th></tr></thead><tbody>
+      ${items.map(x=>`<tr><td><b>${x.ico} ${x.n}</b><div class="muted" style="font-size:11.5px;white-space:normal;max-width:260px">${x.w}</div></td>
+        <td>${FR(x.p)} F</td><td>${x.m}%</td><td>${Math.round(x.q)}</td>
+        <td style="text-align:right"><b class="up">+${FR(x.q*x.p*x.m/100)} F</b></td></tr>`).join('')}
+      <tr><td colspan="4"><b>TOTAL si vous proposez tout</b></td><td style="text-align:right"><b style="color:var(--brand);font-size:16px">+${FR(tot)} F/mois</b></td></tr>
+      </tbody></table></div>
+    </div>`;
+  }
+
+  else if(csTab==='services'){
+    B.innerHTML=`<div class="card"><h3>🇲🇱 Services annexes qui marchent au Mali</h3>
+      <div class="muted" style="font-size:12.5px;margin-bottom:12px">👛 = adapté à une clientèle à <b>petite bourse</b>. Priorité à ce qui utilise ce que vous <b>avez déjà payé</b>.</div>
+      ${SERVICES_MALI.map(s=>`
+      <div class="ing" style="background:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px">
+          <div style="font-weight:800;font-size:15px">${s.ico} ${s.nom} ${s.bourse?'<span class="pill" style="background:#dcfce7;color:#047857">👛 petite bourse</span>':''}</div>
+        </div>
+        <div style="font-size:13.5px;line-height:1.5;color:var(--muted);margin-bottom:8px">${s.why}</div>
+        <div class="ing-g" style="margin:0">
+          <label>Prix conseillé<b style="color:var(--ink);font-size:13px">${s.prix}</b></label>
+          <label>Investissement<b style="color:var(--ink);font-size:13px">${s.inv}</b></label>
+          <label>Gain estimé<b style="color:var(--good);font-size:13px">${s.gain}</b></label>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  else {
+    const gB=S.lavJour*30*(simC.boisson/100)*simC.prixB, bB=gB*0.65;
+    const gA=S.voitMois*(simC.aspi/100)*500, bA=gA*0.9;
+    const gT=simC.tapisSem*4.3*2500, bT=gT*0.7;
+    const gAb=simC.abo*5000, bAb=gAb*0.6;
+    const caT=gB+gA+gT+gAb, benT=bB+bA+bT+bAb;
+    B.innerHTML=`<div class="card"><h3>🧮 Simulateur — combien je gagnerais si…</h3>
+      <div class="charges-grid">
+        <label><span class="lb">% de clients qui prennent une boisson</span><input type="number" value="${simC.boisson}" oninput="csSim('boisson',this.value)"></label>
+        <label><span class="lb">Prix moyen de la boisson (F)</span><input type="number" value="${simC.prixB}" oninput="csSim('prixB',this.value)"></label>
+        <label><span class="lb">% de voitures qui prennent l'aspiration</span><input type="number" value="${simC.aspi}" oninput="csSim('aspi',this.value)"></label>
+        <label><span class="lb">Tapis lavés par semaine</span><input type="number" value="${simC.tapisSem}" oninput="csSim('tapisSem',this.value)"></label>
+        <label><span class="lb">Abonnements vendus / mois</span><input type="number" value="${simC.abo}" oninput="csSim('abo',this.value)"></label>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:8px">Base réelle : ${S.lavJour.toFixed(1)} lavages/jour · ${Math.round(S.voitMois)} voitures/mois.</div>
+    </div>
+    <div class="card"><h3>Résultat</h3>
+      <div class="row"><div class="l"><span class="nm">💧 Boissons pendant l'attente</span></div><div class="r">${money(gB)} <span class="muted" style="font-weight:500">→ marge ${money(bB)}</span></div></div>
+      <div class="row"><div class="l"><span class="nm">🚿 Aspiration en supplément</span></div><div class="r">${money(gA)} <span class="muted" style="font-weight:500">→ marge ${money(bA)}</span></div></div>
+      <div class="row"><div class="l"><span class="nm">🧽 Lavage de tapis</span></div><div class="r">${money(gT)} <span class="muted" style="font-weight:500">→ marge ${money(bT)}</span></div></div>
+      <div class="row"><div class="l"><span class="nm">🎟️ Abonnements</span></div><div class="r">${money(gAb)} <span class="muted" style="font-weight:500">→ marge ${money(bAb)}</span></div></div>
+      <div class="row" style="border-top:2px solid var(--hair)"><div class="l"><b>Chiffre d'affaires en plus</b></div><div class="r"><b>${money(caT)}/mois</b></div></div>
+      <div class="row"><div class="l"><b>BÉNÉFICE EN PLUS</b></div><div class="r"><b style="color:var(--brand);font-size:19px">+${money(benT)}/mois</b></div></div>
+      <div class="reco good mt"><div class="ic">💡</div><div class="tx">Soit <b>${money(benT*12)}</b> sur un an — sans ouvrir un nouveau commerce, juste en vendant mieux à ceux qui viennent déjà.</div></div>
+    </div>`;
+  }
+}
 
 /* ============================================================ CAISSE DU JOUR ============================================================ */
 function renderCaisse(){

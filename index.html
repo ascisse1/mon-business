@@ -342,15 +342,22 @@
           <button data-v="clients"><span class="i">🎫</span>Clients</button>
           <button data-v="dep"><span class="i">💸</span>Dépenses</button>
         </div>
+        <div class="seg" id="d-period">
+          <button class="on" onclick="setHomePeriod('jour')">Aujourd'hui</button>
+          <button onclick="setHomePeriod('mois')">Ce mois</button>
+          <button onclick="setHomePeriod('30j')">30 jours</button>
+          <button onclick="setHomePeriod('tout')">Tout</button>
+        </div>
+        <div class="muted" id="d-period-info" style="font-size:12.5px;margin:-6px 0 12px"></div>
         <div class="dash-stats">
-          <div class="stat hero"><div class="lbl">CA — aujourd'hui</div><div class="val" id="d-ca">0 <small>FCFA</small></div></div>
-          <div class="stat"><div class="lbl">Bénéfice — aujourd'hui</div><div class="val" id="d-benef">0 <small>FCFA</small></div></div>
-          <div class="stat"><div class="lbl">Lavages aujourd'hui</div><div class="val" id="d-nb-wash">0</div></div>
-          <div class="stat"><div class="lbl">Marge des ventes du jour</div><div class="val up" id="d-marge">0 <small>FCFA</small></div></div>
+          <div class="stat hero"><div class="lbl" id="d-lbl1">CA</div><div class="val" id="d-ca">0 <small>FCFA</small></div></div>
+          <div class="stat"><div class="lbl" id="d-lbl2">Bénéfice</div><div class="val" id="d-benef">0 <small>FCFA</small></div></div>
+          <div class="stat"><div class="lbl" id="d-lbl3">Lavages</div><div class="val" id="d-nb-wash">0</div></div>
+          <div class="stat"><div class="lbl" id="d-lbl4">Marge des ventes</div><div class="val up" id="d-marge">0 <small>FCFA</small></div></div>
         </div>
         <div class="dash-2 lead">
           <div class="card" style="margin:0">
-            <h3>🎯 Objectif du jour</h3>
+            <h3 id="d-obj-title">🎯 Objectif du jour</h3>
             <div style="display:flex;justify-content:space-between;align-items:baseline">
               <div><b id="d-obj-real" style="font-size:20px">0</b> <span class="muted">/ <span id="d-obj-goal">0</span> FCFA</span></div>
               <div id="d-obj-pct" style="font-weight:800;font-size:18px"></div>
@@ -365,8 +372,8 @@
           </div>
         </div>
         <div class="dash-2">
-          <div class="card" style="margin:0"><h3>Répartition du jour</h3><div class="grid2" id="d-cats"></div></div>
-          <div class="card" style="margin:0"><h3>🏆 Top produits (30 j)</h3><div id="d-top"></div></div>
+          <div class="card" style="margin:0"><h3 id="d-cats-title">Répartition</h3><div class="grid2" id="d-cats"></div></div>
+          <div class="card" style="margin:0"><h3 id="d-top-title">🏆 Top prestations</h3><div id="d-top"></div></div>
         </div>
       </section>
 
@@ -803,16 +810,45 @@ function render(){
 
 /* ============================================================ DASHBOARD ============================================================ */
 let homeRange=7;
+let homePeriod='jour';
+function setHomePeriod(p){homePeriod=p;renderHome();}
+function homePeriodRange(){
+  const t=new Date();
+  if(homePeriod==='mois'){const f=new Date(t.getFullYear(),t.getMonth(),1);
+    return {from:dayKey(f),to:todayKey(),label:'ce mois',jours:t.getDate()};}
+  if(homePeriod==='30j'){const f=new Date();f.setDate(f.getDate()-29);
+    return {from:dayKey(f),to:todayKey(),label:'30 derniers jours',jours:30};}
+  if(homePeriod==='tout'){
+    const ks=DB.ventes.map(v=>dayKey(v.ts)).concat((DB.depenses||[]).map(d=>dayKey(d.ts))).sort();
+    if(!ks.length)return {from:todayKey(),to:todayKey(),label:'depuis le début',jours:1};
+    const from=ks[0],to=ks[ks.length-1];
+    return {from,to,label:'depuis le début',
+      jours:Math.round((new Date(to+'T12:00:00')-new Date(from+'T12:00:00'))/86400000)+1};}
+  return {from:todayKey(),to:todayKey(),label:"aujourd'hui",jours:1};
+}
 function renderHome(){
-  const tv=ventesDay(todayKey());
-  const ca=sum(tv,caOf),benefVentes=sum(tv,benefOf);
-  const depJour=sum(DB.depenses.filter(d=>dayKey(d.ts)===todayKey()),d=>d.montant);
-  const benef=benefVentes-depJour;
+  const R=homePeriodRange(),KEYS=['jour','mois','30j','tout'];
+  document.querySelectorAll('#d-period button').forEach((b,i)=>b.classList.toggle('on',KEYS[i]===homePeriod));
+  const tv=ventesRange(R.from,R.to);
+  const dr=(DB.depenses||[]).filter(d=>{const k=dayKey(d.ts);return k>=R.from&&k<=R.to;});
+  const ca=sum(tv,caOf),margeVentes=sum(tv,benefOf);
+  const charges=sum(dr.filter(d=>!d.invest),d=>d.montant);
+  const benef=margeVentes-charges;
+  document.getElementById('d-period-info').innerHTML=R.jours>1
+    ?`<b>${R.jours} jours</b> — du ${new Date(R.from+'T12:00:00').toLocaleDateString('fr-FR')} au ${new Date(R.to+'T12:00:00').toLocaleDateString('fr-FR')} · <span class="muted">les investissements ne sont pas comptés dans le bénéfice</span>`
+    :'';
+  document.getElementById('d-lbl1').textContent='CA — '+R.label;
+  document.getElementById('d-lbl2').textContent='Bénéfice — '+R.label;
+  document.getElementById('d-lbl3').textContent='Lavages — '+R.label;
+  document.getElementById('d-lbl4').textContent='Marge des ventes';
+  document.getElementById('d-cats-title').textContent='Répartition — '+R.label;
+  document.getElementById('d-top-title').textContent='🏆 Top prestations — '+R.label;
   document.getElementById('d-ca').innerHTML=FR(ca)+' <small>FCFA</small>';
   const be=document.getElementById('d-benef');be.innerHTML=FR(benef)+' <small>FCFA</small>';be.className='val '+(benef>=0?'up':'down');
   document.getElementById('d-nb-wash').textContent=sum(tv.filter(v=>v.cat==='lavage'),v=>v.qty);
-  document.getElementById('d-marge').innerHTML=FR(benefVentes)+' <small>FCFA</small>';
-  const goal=DB.settings.objectifJour||0,pct=goal?Math.round(ca/goal*100):0;
+  document.getElementById('d-marge').innerHTML=FR(margeVentes)+' <small>FCFA</small>';
+  const goalJ=DB.settings.objectifJour||0,goal=goalJ*R.jours,pct=goal?Math.round(ca/goal*100):0;
+  document.getElementById('d-obj-title').textContent=R.jours>1?`🎯 Objectif sur ${R.jours} jours`:'🎯 Objectif du jour';
   document.getElementById('d-obj-real').textContent=FR(ca);
   document.getElementById('d-obj-goal').textContent=FR(goal);
   document.getElementById('d-obj-pct').textContent=goal?pct+'%':'';
@@ -821,18 +857,18 @@ function renderHome(){
   const msg=document.getElementById('d-obj-msg');
   if(!goal)msg.textContent='Définissez un objectif dans Réglages 🎯';
   else if(pct>=100)msg.innerHTML='🎉 Objectif atteint ! Dépassement de <b>'+money(ca-goal)+'</b>.';
-  else msg.innerHTML='Il manque <b>'+money(goal-ca)+'</b> pour atteindre l\'objectif.';
+  else msg.innerHTML='Il manque <b>'+money(goal-ca)+'</b>'+(R.jours>1?` (objectif ${FR(goalJ)} F/jour × ${R.jours} jours)`:'')+'.';
   drawEvolution();
   const box=document.getElementById('d-cats');box.innerHTML='';
   Object.keys(CAT).forEach(c=>{const v=tv.filter(x=>x.cat===c);
     box.insertAdjacentHTML('beforeend',`<div class="stat" style="padding:13px"><div class="lbl">${CAT[c].ico} ${CAT[c].nom}</div>
       <div class="val" style="font-size:18px">${FR(sum(v,caOf))}</div><div class="muted" style="font-size:11px">${sum(v,x=>x.qty)} vente(s)</div></div>`);});
-  const agg={};ventesSince(nDaysAgo(30)).forEach(v=>{agg[v.nom]=agg[v.nom]||{nom:v.nom,cat:v.cat,qty:0,ca:0};agg[v.nom].qty+=v.qty;agg[v.nom].ca+=caOf(v);});
+  const agg={};tv.forEach(v=>{agg[v.nom]=agg[v.nom]||{nom:v.nom,cat:v.cat,qty:0,ca:0};agg[v.nom].qty+=v.qty;agg[v.nom].ca+=caOf(v);});
   const top=Object.values(agg).sort((a,b)=>b.ca-a.ca).slice(0,6);
   document.getElementById('d-top').innerHTML=top.length?top.map((t,i)=>
     `<div class="row"><div class="l"><b style="width:18px;color:var(--muted)">${i+1}</b><span class="dot" style="background:${CAT[t.cat].color}"></span>
-     <span class="nm">${t.nom}</span></div><div class="r">${money(t.ca)}<div class="mt" style="font-weight:500;color:var(--muted)">${t.qty} vendus</div></div></div>`
-  ).join(''):'<div class="empty">Aucune vente encore. Appuyez sur ＋</div>';
+     <span class="nm">${esc(t.nom)}</span></div><div class="r">${money(t.ca)}<div class="mt" style="font-weight:500;color:var(--muted)">${t.qty} vendus</div></div></div>`
+  ).join(''):'<div class="empty">Aucune vente sur cette période.</div>';
 }
 document.querySelectorAll('#d-range button').forEach(b=>b.onclick=()=>{homeRange=+b.dataset.r;
   document.querySelectorAll('#d-range button').forEach(x=>x.classList.toggle('on',x===b));drawEvolution();});

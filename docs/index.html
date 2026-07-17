@@ -342,13 +342,20 @@
           <button data-v="clients"><span class="i">🎫</span>Clients</button>
           <button data-v="dep"><span class="i">💸</span>Dépenses</button>
         </div>
-        <div class="seg" id="d-period">
-          <button class="on" onclick="setHomePeriod('jour')">Aujourd'hui</button>
-          <button onclick="setHomePeriod('mois')">Ce mois</button>
-          <button onclick="setHomePeriod('30j')">30 jours</button>
-          <button onclick="setHomePeriod('tout')">Tout</button>
+        <div class="cat-tabs" id="d-gran">
+          <button class="cat-tab on" data-g="jour" onclick="setGran('jour')">Jour</button>
+          <button class="cat-tab" data-g="semaine" onclick="setGran('semaine')">Semaine</button>
+          <button class="cat-tab" data-g="mois" onclick="setGran('mois')">Mois</button>
+          <button class="cat-tab" data-g="trim" onclick="setGran('trim')">Trimestre</button>
+          <button class="cat-tab" data-g="sem" onclick="setGran('sem')">Semestre</button>
+          <button class="cat-tab" data-g="annee" onclick="setGran('annee')">Année</button>
         </div>
-        <div class="muted" id="d-period-info" style="font-size:12.5px;margin:-6px 0 12px"></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <button class="btn sm sec" style="width:auto;padding:9px 14px;font-size:18px" onclick="homeNav(-1)">‹</button>
+          <input type="date" id="d-anchor" onchange="homeAnchorSet(this.value)" style="flex:1;min-width:0;padding:10px;border:1.5px solid var(--hair);border-radius:11px;text-align:center;font-weight:700;background:#fff">
+          <button class="btn sm sec" style="width:auto;padding:9px 14px;font-size:18px" onclick="homeNav(1)">›</button>
+        </div>
+        <div class="muted" id="d-period-info" style="font-size:12.5px;margin:0 0 12px"></div>
         <div class="dash-stats">
           <div class="stat hero"><div class="lbl" id="d-lbl1">CA</div><div class="val" id="d-ca">0 <small>FCFA</small></div></div>
           <div class="stat"><div class="lbl" id="d-lbl2">Bénéfice</div><div class="val" id="d-benef">0 <small>FCFA</small></div></div>
@@ -823,39 +830,48 @@ function render(){
 
 /* ============================================================ DASHBOARD ============================================================ */
 let homeRange=7;
-let homePeriod='jour';
-function setHomePeriod(p){homePeriod=p;renderHome();}
+let homePeriod='jour',homeAnchor=null;
+function setGran(g){homePeriod=g;renderHome();}
+function homeAnchorSet(v){if(v)homeAnchor=v;renderHome();}
+function homeNav(delta){const A=new Date((homeAnchor||todayKey())+'T12:00:00');
+  if(homePeriod==='jour')A.setDate(A.getDate()+delta);
+  else if(homePeriod==='semaine')A.setDate(A.getDate()+7*delta);
+  else if(homePeriod==='mois')A.setMonth(A.getMonth()+delta);
+  else if(homePeriod==='trim')A.setMonth(A.getMonth()+3*delta);
+  else if(homePeriod==='sem')A.setMonth(A.getMonth()+6*delta);
+  else A.setFullYear(A.getFullYear()+delta);
+  homeAnchor=dayKey(A);renderHome();}
 function homePeriodRange(){
-  const t=new Date();
-  if(homePeriod==='mois'){const f=new Date(t.getFullYear(),t.getMonth(),1);
-    return {from:dayKey(f),to:todayKey(),label:'ce mois',jours:t.getDate()};}
-  if(homePeriod==='30j'){const f=new Date();f.setDate(f.getDate()-29);
-    return {from:dayKey(f),to:todayKey(),label:'30 derniers jours',jours:30};}
-  if(homePeriod==='tout'){
-    const ks=DB.ventes.map(v=>dayKey(v.ts)).concat((DB.depenses||[]).map(d=>dayKey(d.ts))).sort();
-    if(!ks.length)return {from:todayKey(),to:todayKey(),label:'depuis le début',jours:1};
-    const from=ks[0],to=ks[ks.length-1];
-    return {from,to,label:'depuis le début',
-      jours:Math.round((new Date(to+'T12:00:00')-new Date(from+'T12:00:00'))/86400000)+1};}
-  return {from:todayKey(),to:todayKey(),label:"aujourd'hui",jours:1};
+  if(!homeAnchor)homeAnchor=todayKey();
+  const A=new Date(homeAnchor+'T12:00:00');let from,to,label;
+  if(homePeriod==='jour'){from=new Date(A);to=new Date(A);label='le '+A.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});}
+  else if(homePeriod==='semaine'){const day=(A.getDay()+6)%7;from=new Date(A);from.setDate(A.getDate()-day);to=new Date(from);to.setDate(from.getDate()+6);
+    label='semaine du '+from.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' au '+to.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});}
+  else if(homePeriod==='mois'){from=new Date(A.getFullYear(),A.getMonth(),1);to=new Date(A.getFullYear(),A.getMonth()+1,0);label=A.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});}
+  else if(homePeriod==='trim'){const q=Math.floor(A.getMonth()/3);from=new Date(A.getFullYear(),q*3,1);to=new Date(A.getFullYear(),q*3+3,0);label='Trimestre '+(q+1)+' '+A.getFullYear();}
+  else if(homePeriod==='sem'){const s=A.getMonth()<6?0:1;from=new Date(A.getFullYear(),s*6,1);to=new Date(A.getFullYear(),s*6+6,0);label=(s===0?'1er':'2e')+' semestre '+A.getFullYear();}
+  else{from=new Date(A.getFullYear(),0,1);to=new Date(A.getFullYear(),11,31);label='année '+A.getFullYear();}
+  const today=new Date();today.setHours(12,0,0,0);
+  const toCap=to>today?today:to;
+  const jours=Math.max(1,Math.round((toCap-from)/86400000)+1);
+  return {from:dayKey(from),to:dayKey(toCap),label,jours};
 }
 function renderHome(){
-  const R=homePeriodRange(),KEYS=['jour','mois','30j','tout'];
-  document.querySelectorAll('#d-period button').forEach((b,i)=>b.classList.toggle('on',KEYS[i]===homePeriod));
+  const R=homePeriodRange();
+  document.querySelectorAll('#d-gran button').forEach(b=>b.classList.toggle('on',b.dataset.g===homePeriod));
+  const anchorEl=document.getElementById('d-anchor');if(anchorEl){anchorEl.value=homeAnchor;anchorEl.max=todayKey();}
   const tv=ventesRange(R.from,R.to);
   const dr=(DB.depenses||[]).filter(d=>{const k=dayKey(d.ts);return k>=R.from&&k<=R.to;});
   const ca=sum(tv,caOf),margeVentes=sum(tv,benefOf);
   const charges=sum(dr.filter(d=>!d.invest),d=>d.montant);
   const benef=margeVentes-charges;
-  document.getElementById('d-period-info').innerHTML=R.jours>1
-    ?`<b>${R.jours} jours</b> — du ${new Date(R.from+'T12:00:00').toLocaleDateString('fr-FR')} au ${new Date(R.to+'T12:00:00').toLocaleDateString('fr-FR')} · <span class="muted">les investissements ne sont pas comptés dans le bénéfice</span>`
-    :'';
-  document.getElementById('d-lbl1').textContent='CA — '+R.label;
-  document.getElementById('d-lbl2').textContent='Bénéfice — '+R.label;
-  document.getElementById('d-lbl3').textContent='Lavages — '+R.label;
+  document.getElementById('d-period-info').innerHTML=`📅 <b style="text-transform:capitalize">${R.label}</b> · ${R.jours} jour${R.jours>1?'s':''} <span class="muted">· le bénéfice n'inclut pas les investissements</span>`;
+  document.getElementById('d-lbl1').textContent="Chiffre d'affaires";
+  document.getElementById('d-lbl2').textContent='Bénéfice';
+  document.getElementById('d-lbl3').textContent='Lavages';
   document.getElementById('d-lbl4').textContent='Marge des ventes';
-  document.getElementById('d-cats-title').textContent='Répartition — '+R.label;
-  document.getElementById('d-top-title').textContent='🏆 Top prestations — '+R.label;
+  document.getElementById('d-cats-title').textContent='Répartition';
+  document.getElementById('d-top-title').textContent='🏆 Top prestations';
   document.getElementById('d-ca').innerHTML=FR(ca)+' <small>FCFA</small>';
   const be=document.getElementById('d-benef');be.innerHTML=FR(benef)+' <small>FCFA</small>';be.className='val '+(benef>=0?'up':'down');
   document.getElementById('d-nb-wash').textContent=sum(tv.filter(v=>v.cat==='lavage'),v=>v.qty);

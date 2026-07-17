@@ -482,7 +482,20 @@
         <button class="btn mt" onclick="openDepModal()">➕ Ajouter une dépense</button>
         <button class="btn sec mt" onclick="openRationModal()">🍚 Ration quotidienne du personnel (2000 F/jour)</button>
         <button class="btn sec mt" onclick="openInvestDetect()">🏗️ Détecter mes investissements (équipement durable)</button>
-        <div class="card mt"><h3>Dépenses récentes</h3><div id="e-list"></div></div>
+        <div class="card mt">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+            <h3 style="margin:0" id="e-count">Dépenses</h3>
+            <div style="display:flex;gap:6px">
+              <select id="e-filter" onchange="depSetFilter(this.value)" style="padding:8px 10px;border:1.5px solid var(--hair);border-radius:10px;font-weight:600;background:#fff"></select>
+              <select id="e-sort" onchange="depSetSort(this.value)" style="padding:8px 10px;border:1.5px solid var(--hair);border-radius:10px;font-weight:600;background:#fff">
+                <option value="date">📅 Récent</option>
+                <option value="date_asc">📅 Ancien</option>
+                <option value="montant">💰 Montant</option>
+              </select>
+            </div>
+          </div>
+          <div id="e-list"></div>
+        </div>
       </section>
 
       <!-- ================= CONSEILS ================= -->
@@ -1420,20 +1433,40 @@ function saveStock(){const nom=document.getElementById('sk-nom').value.trim();if
 
 /* ============================================================ DÉPENSES ============================================================ */
 const DEP_CATS=['Ration personnel','Loyer lavage','Loyer café','Salaires','Produits nettoyage','Achat nourriture','Autres'];
+let depFilter='all',depSort='date';
+function depSetFilter(v){depFilter=v;renderDep();}
+function depSetSort(v){depSort=v;renderDep();}
 function renderDep(){
   document.getElementById('e-monthnav').innerHTML=monthNavHTML();
   const mk=vmKey(),md=DB.depenses.filter(d=>monthKey(d.ts)===mk),totDep=sum(md,d=>d.montant);
   const net=sum(ventesMonth(mk),benefOf)-totDep;
   document.getElementById('e-month').innerHTML=FR(totDep)+' <small>FCFA</small>';
   const ne=document.getElementById('e-net');ne.innerHTML=FR(net)+' <small>FCFA</small>';ne.className='val '+(net>=0?'up':'down');
-  const rows=md.slice().sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+  // --- filtre par type ---
+  const fsel=document.getElementById('e-filter'),present=[...new Set(md.map(d=>d.categorie))];
+  const valid=new Set(['all',...DEP_CATS.filter(c=>present.includes(c)).map(c=>'cat:'+c)]);
+  if(md.some(d=>d.invest))valid.add('invest');
+  if(!valid.has(depFilter))depFilter='all';
+  const byCat={};md.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  fsel.innerHTML=['<option value="all">Tous les types</option>']
+    .concat(DEP_CATS.filter(c=>present.includes(c)).map(c=>`<option value="cat:${esc(c)}">${esc(c)} — ${FR(byCat[c])} F</option>`))
+    .concat(md.some(d=>d.invest)?[`<option value="invest">🏗️ Investissements — ${FR(sum(md.filter(d=>d.invest),d=>d.montant))} F</option>`]:[]).join('');
+  fsel.value=depFilter;document.getElementById('e-sort').value=depSort;
+  // --- application filtre ---
+  let rows=md.slice();
+  if(depFilter==='invest')rows=rows.filter(d=>d.invest);
+  else if(depFilter.indexOf('cat:')===0){const c=depFilter.slice(4);rows=rows.filter(d=>d.categorie===c);}
+  if(depSort==='montant')rows.sort((a,b)=>b.montant-a.montant);
+  else if(depSort==='date_asc')rows.sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  else rows.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+  document.getElementById('e-count').textContent=`${rows.length} ligne(s) · ${money(sum(rows,d=>d.montant))}`;
   document.getElementById('e-list').innerHTML=rows.length?rows.map(d=>
     `<div class="row"><div class="l"><span class="dot" style="background:${d.invest?'var(--brand)':'var(--dep)'}"></span>
      <div><div class="nm">${esc(d.categorie)} ${d.invest?'<span class="pill">🏗️ Investissement</span>':''}</div>
      <div class="mt">${new Date(d.ts).toLocaleDateString('fr-FR')}${d.note?' · '+esc(d.note):''}${d.invest?' · amorti sur '+(d.amortMois||24)+' mois':''}</div></div></div>
      <div class="r down" style="display:flex;gap:6px;align-items:center">-${money(d.montant)}
      <button class="btn sm sec" style="padding:5px 8px" onclick="toggleInvest('${d.id}')" title="Marquer comme investissement">🏗️</button>
-     <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense ce mois</div>';
+     <button class="del" onclick="delDep('${d.id}')">🗑️</button></div></div>`).join(''):'<div class="empty">Aucune dépense pour ce filtre</div>';
 }
 function openDepModal(){openSheet(`<h3>➕ Nouvelle dépense</h3>
   <div class="field"><label>Catégorie</label><select id="m-cat">${DEP_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
@@ -1491,7 +1524,11 @@ function saveDep(){const m=+document.getElementById('m-mnt').value;if(!m){toast(
   const dep={id:uid(),ts:new Date(dstr+'T12:00:00').toISOString(),categorie:document.getElementById('m-cat').value,montant:m,note:document.getElementById('m-note').value.trim()};
   if(inv){dep.invest=true;dep.amortMois=Math.max(1,+document.getElementById('m-amort').value||24);}
   DB.depenses.push(dep);
-  save();closeSheet();toast('✓ Dépense ajoutée');renderDep();}
+  // aller automatiquement au mois de la depense ajoutee, sans filtre, pour la voir
+  const now=new Date(),dd=new Date(dstr+'T12:00:00');
+  statsMonth=(dd.getFullYear()-now.getFullYear())*12+(dd.getMonth()-now.getMonth());
+  depFilter='all';depSort='date';
+  save();closeSheet();toast('✓ Dépense ajoutée : '+dd.toLocaleDateString('fr-FR'));renderDep();}
 function delDep(id){DB.depenses=DB.depenses.filter(d=>d.id!==id);save();renderDep();}
 function openRationModal(){openSheet(`<h3>🍚 Ration quotidienne du personnel</h3>
   <div class="muted" style="font-size:12.5px;margin-bottom:10px">Ajoute une dépense pour <b>chaque jour</b> de la période. Les jours déjà enregistrés ne sont pas dupliqués (vous pouvez relancer sans risque).</div>
